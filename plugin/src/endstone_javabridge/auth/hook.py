@@ -46,6 +46,26 @@ def _is_loopback(host: str) -> bool:
         return h.startswith("127.")
 
 
+def _local_addresses() -> set:
+    """Every address of this machine: loopback and what its interfaces have."""
+    import socket
+    found = {"127.0.0.1", "::1"}
+    try:
+        for info in socket.getaddrinfo(socket.gethostname(), None):
+            found.add(info[4][0].split("%", 1)[0].lower())
+    except Exception:
+        pass
+    for family, probe in ((socket.AF_INET, "192.0.2.1"), (socket.AF_INET6, "2001:db8::1")):
+        try:
+            s = socket.socket(family, socket.SOCK_DGRAM)
+            s.connect((probe, 9))  # no packet is sent: this only asks the routing table
+            found.add(s.getsockname()[0].split("%", 1)[0].lower())
+            s.close()
+        except Exception:
+            pass
+    return found
+
+
 class IdentityHook:
     """Loads and drives the native shim for javabridge's online identity."""
 
@@ -56,6 +76,26 @@ class IdentityHook:
         self._shim = None
         self._installed = False
         self._secret = b""
+        self._proxies: set = set()
+
+    def set_proxies(self, sources) -> None:
+        """Addresses a Bedrock proxy (Beacon or another relay) logs players in from
+        ([bedrock] trusted_proxies). Its logins are self-signed and carry the player's real XUID,
+        which the hook then restores: what the separate xuidforward plugin does, built in. The word
+        "local" stands for every address of this machine."""
+        out = set()
+        for s in sources or []:
+            s = str(s).strip().lower()
+            if s == "local":
+                out |= _local_addresses()
+            elif s:
+                out.add(s.split("%", 1)[0].strip("[]"))
+        self._proxies = out
+
+    def _from_proxy(self, host: str) -> bool:
+        if not self._proxies or not host:
+            return False
+        return host.strip().lower().split("%", 1)[0].strip("[]") in self._proxies
 
     def set_secret(self, secret: str) -> None:
         """The per-start trust secret (jb_call('identity_secret')). Re-read after every reload."""
@@ -153,7 +193,14 @@ class IdentityHook:
         secret_ok = bool(self._secret) and parsed is not None and hmac.compare_digest(
             self._secret, (parsed.get("nonce") or "").encode("utf-8")
         )
-        if not (loopback and secret_ok):
+        # Two kinds of login get an identity: javabridge's own Java players (loopback and this
+        # start's secret), and players a trusted Bedrock proxy relays (its address, no secret:
+        # the proxy has verified them with Xbox Live and passes their real XUID on).
+        if loopback and secret_ok:
+            source = "java"
+        elif self._from_proxy(host):
+            source = "proxy"
+        else:
             self._clear(parsed)
             return
 
@@ -172,7 +219,7 @@ class IdentityHook:
             if rc == 0:
                 staged.append(name)
         if staged:
-            self._log.info(f"online identity: staged {staged} xuid={xuid}")
+            self._log.info(f"online identity: staged {staged} xuid={xuid}" + (" (relayed Bedrock player)" if source == "proxy" else ""))
         else:
             self._log.warning(f"online identity: NOT staged (names={names}): "
                               f"{self._shim.xf_last_error().decode()}")

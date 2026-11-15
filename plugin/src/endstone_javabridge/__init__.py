@@ -39,6 +39,12 @@ port = 0
 # How the bridge reaches this server over loopback: "auto" (default) follows server.properties
 # `transport` (RakNet, or NetherNet for transport=nethernet); "raknet" or "nethernet" force one.
 transport = "auto"
+# Bedrock proxy in front of this server (Beacon, another relay)? List the addresses it connects
+# from, e.g. ["127.0.0.1"] for one on this machine ("local" = any address of this machine). Its
+# players then keep their real Xbox XUID here (the xuidforward plugin, built in: do not install
+# that plugin as well). Only do this when nothing but the proxy can reach this server's port
+# (firewall): whoever connects from these addresses is believed. Empty = off.
+trusted_proxies = []
 
 [core]
 # "bridge" (normal) or "spike" (native library self-test).
@@ -146,6 +152,17 @@ class JavaBridgePlugin(Plugin):
         """Read BDS's server.properties online-mode (default false in Endstone). Best-effort."""
         return self._server_properties().get("online-mode", "").lower() == "true"
 
+    def _trusted_proxies(self) -> list:
+        """[bedrock] trusted_proxies from config.toml, as a list of strings."""
+        try:
+            raw = tomllib.loads((Path(self.data_folder) / "config.toml").read_text(encoding="utf-8"))
+        except Exception:
+            return []
+        v = raw.get("bedrock", {}).get("trusted_proxies", [])
+        if isinstance(v, str):
+            v = [v]
+        return [str(x).strip() for x in v if str(x).strip()]
+
     def _bedrock_target(self, transport: str, port: int) -> str:
         """The core's Bedrock target for this server: "127.0.0.1:<port>" (RakNet), or
         "nethernet:<host>:<port>" when this BDS runs transport=nethernet (it then has no RakNet
@@ -182,10 +199,16 @@ class JavaBridgePlugin(Plugin):
         except Exception as e:  # noqa: BLE001
             self.logger.warning(f"online identity: could not read the trust secret ({e}); online identity off")
             return
-        if not secret:
+        proxies = self._trusted_proxies()
+        if not secret and not proxies:
             self.logger.info("account mode is offline: online-identity hook not installed (logins untouched)")
             return
+        if not namespace:
+            namespace = "a3e78ee7-823a-4cb5-9fe0-532b54ccc20d"  # the relay's and xuidforward's namespace
         hook = IdentityHook(self.logger, Path(__file__).parent, namespace)
+        hook.set_proxies(proxies)
+        if proxies:
+            self.logger.info(f"trusted Bedrock proxies: {', '.join(proxies)} - their players keep their Xbox XUID")
         if not hook.load():
             self.logger.warning("online identity: native hook did not load; Java logins will NOT get a stable XUID "
                                 "and online-mode BDS will refuse them. Use account_mode=offline or add a profile.")

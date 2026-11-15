@@ -132,6 +132,18 @@ def run():
     h.on_packet_receive(FakeEvent(0x01, "::1", b"x"))
     results.append(("ipv6-loopback+secret -> staged", len(h._shim.staged) == 1))
 
+    # 5b. a trusted proxy's address, no secret -> STAGED (a relayed Bedrock player's real XUID)
+    h = make_hook(good_parse(""))
+    h.set_proxies(["127.0.0.1"])
+    h.on_packet_receive(FakeEvent(0x01, "127.0.0.1", b"x"))
+    results.append(("trusted proxy, no secret -> staged", len(h._shim.staged) == 1))
+
+    # 5c. the same login from an address that is not a trusted proxy -> NOT staged
+    h = make_hook(good_parse(""))
+    h.set_proxies(["10.0.0.5"])
+    h.on_packet_receive(FakeEvent(0x01, "203.0.113.7", b"x"))
+    results.append(("untrusted address, proxies set -> not staged", len(h._shim.staged) == 0 and len(h._shim.cleared) == 1))
+
     # 6. hook not installed -> nothing happens
     h = make_hook(good_parse(SECRET))
     h._installed = False

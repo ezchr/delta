@@ -97,3 +97,22 @@ same on both transports.
 `namespace_uuid` must be the same on the core and the hook (it keys the derived UUID/XUID and the
 `SelfSignedId` consistency check). The default is baked into both; only change it if you run several
 independent javabridge networks that must not share derived ids.
+
+## Bedrock players through a proxy: `[bedrock] trusted_proxies`
+
+A Bedrock proxy in front of this server (Beacon or another relay) verifies its players with Xbox
+Live and logs them in to BDS with a self-signed login that carries their real XUID, which an
+`online-mode=false` BDS drops. List the addresses the proxy connects from and javabridge restores
+that XUID, with the same bundled hook that gives Java players theirs:
+
+```toml
+[bedrock]
+trusted_proxies = ["127.0.0.1"]   # "local" = any address of this machine
+```
+
+This is what the separate xuidforward plugin does; do not install that plugin as well (both would
+patch the same BDS function). Whoever connects from a listed address is believed, so only use it
+when nothing but the proxy can reach the server's port (firewall). Empty (the default) is off.
+Tested 2026-11-15: a Bedrock client through a relay on loopback joined with its Xbox XUID
+(`staged [...] (relayed Bedrock player)` -> `Player connected: ..., xuid: <real>`), a Java player
+on the same server keeps the derived one.
