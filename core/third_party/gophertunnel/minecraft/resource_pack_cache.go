@@ -77,3 +77,10 @@ func (cache DirResourcePackCache) Store(_ context.Context, key ResourcePackCache
 func (cache DirResourcePackCache) path(key ResourcePackCacheKey) string {
 	return filepath.Join(cache.Dir, key.UUID.String()+"_"+url.PathEscape(key.Version)+".mcpack")
 }
+
+// sizeless reports whether cache vouches for its packs by UUID and version alone (a cache that
+// reads the server's own pack folders: the server zips them itself, so the sizes differ).
+func sizeless(cache ResourcePackCache) bool {
+	s, ok := cache.(interface{ IgnoreSize() bool })
+	return ok && s.IgnoreSize()
+}

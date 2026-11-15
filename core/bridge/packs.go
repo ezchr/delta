@@ -145,7 +145,7 @@ func packCache() minecraft.ResourcePackCache {
 	if !packsOn() {
 		return nil
 	}
-	return minecraft.DirResourcePackCache{Dir: filepath.Join(packCfg().dir, "bedrock")}
+	return serverPackCache(minecraft.DirResourcePackCache{Dir: filepath.Join(packCfg().dir, "bedrock")})
 }
 
 // packsInfo is what a connection's ResourcePacksInfo and ResourcePackStack said
