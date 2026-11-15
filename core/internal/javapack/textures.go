@@ -48,7 +48,7 @@ var renames = map[string]string{
 	"block/furnace_front_off": "furnace_front", "block/furnace_front_on": "furnace_front_on",
 	"block/crafting_table_front": "crafting_table_front", "block/tnt_side": "tnt_side",
 	"item/apple_golden": "golden_apple", "item/bow_standby": "bow", "item/bucket_empty": "bucket",
-	"item/fishing_rod_uncast": "fishing_rod", "item/book_normal": "book", "item/book_writable": "writable_book",
+	"item/fishing_rod_uncast": "fishing_rod", "item/book_normal": "book", "item/book_writable": "writable_book", "item/banner_pattern": "flower_banner_pattern",
 	"item/book_written": "written_book", "item/book_enchanted": "enchanted_book", "item/map_empty": "map",
 	"item/map_filled": "filled_map", "item/reeds": "sugar_cane", "item/seeds_wheat": "wheat_seeds",
 	"item/seeds_pumpkin": "pumpkin_seeds", "item/seeds_melon": "melon_seeds", "item/melon": "melon_slice",
