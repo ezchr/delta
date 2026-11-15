@@ -353,6 +353,7 @@ func (p *Player) sendColumn(pos ChunkPos, col *column) error {
 	c := col.c
 	chunk.LightArea([]*chunk.Chunk{c}, int(pos[0]), int(pos[1])).Fill()
 	java, wet := w.pal.JavaFor(p.ver())
+	alt := w.pal.VineAltFor(p.ver())
 	n := dimSections(p.javaDim)
 	jc := &p.col
 	jc.X, jc.Z = pos[0], pos[1]
@@ -411,6 +412,9 @@ func (p *Player) sendColumn(pos ChunkPos, col *column) error {
 						state := java[idx]
 						if isWet {
 							state = wet[idx]
+						}
+						if w.pal.IsVine(idx) {
+							state = w.vineState(col, idx, cube.Pos{int(pos[0])<<4 | int(x), baseY + int(y), int(pos[1])<<4 | int(z)}, state, alt)
 						}
 						sec.Blocks[jchunk.BlockIndex(int(x), int(y), int(z))] = state
 						if !w.pal.IsAir(idx) {
@@ -519,7 +523,7 @@ func (p *Player) updateBlocks(changes []blockChange) {
 	type secKey [3]int32
 	sections := map[secKey][]uint64{}
 	var single []blockChange
-	extra := 0 // door halves redrawn with a change
+	extra := 0 // door halves and vines redrawn with a change
 	for _, ch := range changes {
 		pos := cube.Pos{int(ch.pos[0]), int(ch.pos[1]), int(ch.pos[2])}
 		if pos.OutOfBounds(w.r) || ch.layer > 1 {
@@ -539,9 +543,12 @@ func (p *Player) updateBlocks(changes []blockChange) {
 			continue
 		}
 		state := p.javaStateAt(col, pos)
-		for _, dy := range []int{-1, 1} { // a door's other half shows part of this one's state
+		for _, dy := range []int{-1, 1} { // a door's other half shows part of this one's state, a vine its tip or body
 			o := pos.Add(cube.Pos{0, dy, 0})
-			if o.OutOfBounds(w.r) || !w.pal.IsDoor(col.c.Block(x, int16(o[1]), z, 0)) {
+			if o.OutOfBounds(w.r) {
+				continue
+			}
+			if nb := col.c.Block(x, int16(o[1]), z, 0); !w.pal.IsDoor(nb) && !w.vineDependsOn(nb, dy) {
 				continue
 			}
 			ok := secKey{int32(o[0] >> 4), int32(o[1] >> 4), int32(o[2] >> 4)}

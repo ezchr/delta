@@ -64,6 +64,9 @@ func (p *Player) javaStateAt(col *column, pos cube.Pos) uint32 {
 	if isWet {
 		state = wet[main]
 	}
+	if w.pal.IsVine(main) {
+		state = w.vineState(col, main, pos, state, w.pal.VineAltFor(p.ver()))
+	}
 	if w.pal.BlockEntity(main) != "" || w.pal.BlockEntityState(main) {
 		state = p.beStateFor(state, main, isWet, pos, col.be[pos])
 	}

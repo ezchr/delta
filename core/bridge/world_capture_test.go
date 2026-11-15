@@ -120,8 +120,8 @@ func TestCapturedChunks(t *testing.T) {
 				for z := byte(0); z < 16; z++ {
 					for x := byte(0); x < 16; x++ {
 						idx := sub.Layer(0).At(x, y, z)
-						if w.pal.IsDoor(idx) || w.pal.BlockEntityState(idx) || w.pal.BlockEntity(idx) != "" {
-							continue // drawn from neighbours or block entities (doors.go, chests.go, blockentities.go)
+						if w.pal.IsDoor(idx) || w.pal.IsVine(idx) || w.pal.BlockEntityState(idx) || w.pal.BlockEntity(idx) != "" {
+							continue // drawn from neighbours or block entities (doors.go, vines.go, chests.go, blockentities.go)
 						}
 						want := java[idx]
 						if len(sub.Layers()) > 1 && w.pal.IsWater(sub.Layer(1).At(x, y, z)) {

@@ -76,11 +76,13 @@ type Palette struct {
 	isAir     []bool
 	water     []bool // a water state (Bedrock keeps waterlogging as water in layer 1)
 	be        []string
-	beState   []bool // the Java state takes something from the block entity
-	door      []bool // a door half (Bedrock splits a door's state between its halves)
+	beState   []bool   // the Java state takes something from the block entity
+	door      []bool   // a door half (Bedrock splits a door's state between its halves)
+	vine      []uint8  // a vine Java splits into tip and body (vines.go)
+	vineAlt   []uint32 // the vine's other Java form
 
 	verMu sync.Mutex
-	ver   map[*version.Version][2][]uint32
+	ver   map[*version.Version][3][]uint32 // java, wet, vineAlt
 }
 
 // NewPalette builds the palette a client builds from StartGame's custom block list.
@@ -166,6 +168,7 @@ func (p *Palette) build() {
 		_, upper := s.Properties["upper_block_bit"]
 		p.door[i] = upper && strings.HasSuffix(s.Name, "door") && !strings.HasSuffix(s.Name, "trapdoor")
 	}
+	p.buildVines()
 }
 
 // UnknownIDs is how many runtime ids not in the palette were looked up so far.
@@ -223,21 +226,29 @@ func (p *Palette) JavaFor(v *version.Version) (java, wet []uint32) {
 	if v == nil || v.Native() {
 		return p.java, p.wet
 	}
+	t := p.verTables(v)
+	return t[0], t[1]
+}
+
+// verTables are the java, wet and vineAlt tables remapped for an older client version.
+func (p *Palette) verTables(v *version.Version) [3][]uint32 {
 	p.verMu.Lock()
 	defer p.verMu.Unlock()
 	if t, ok := p.ver[v]; ok {
-		return t[0], t[1]
+		return t
 	}
-	j, w := make([]uint32, len(p.java)), make([]uint32, len(p.wet))
+	j, w, a := make([]uint32, len(p.java)), make([]uint32, len(p.wet)), make([]uint32, len(p.vineAlt))
 	for i := range p.java {
 		j[i] = uint32(v.BlockState(int32(p.java[i])))
 		w[i] = uint32(v.BlockState(int32(p.wet[i])))
+		a[i] = uint32(v.BlockState(int32(p.vineAlt[i])))
 	}
 	if p.ver == nil {
-		p.ver = map[*version.Version][2][]uint32{}
+		p.ver = map[*version.Version][3][]uint32{}
 	}
-	p.ver[v] = [2][]uint32{j, w}
-	return j, w
+	t := [3][]uint32{j, w, a}
+	p.ver[v] = t
+	return t
 }
 
 // IsAir reports whether index i counts as air on Java (not counted in a section's block count).
