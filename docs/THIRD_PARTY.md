@@ -23,3 +23,14 @@ Copy the new versions of the same directories over these, keep the two patches a
 `go mod tidy` and the tests in `core/`. When the Bedrock or Java protocol version changes, the
 generated tables in `core/internal/{blocks,javamap,sounds,javapack}` and `bridge/recipesets_gen.go`
 have to be regenerated as well (the generators are not part of this repository yet).
+
+## Bundled native hook (online identity)
+
+`plugin/src/endstone_javabridge/auth/libxuidforward.so` and `auth/profiles/*.json` are the
+owner's **xuidforward** native shim and its BDS build profiles, bundled unchanged so javabridge
+ships as one plugin. The shim patches BDS's login path to write a stable XUID for an accepted
+self-signed (loopback) login (see docs/LOGIN.md). `auth/login_body.py` is vendored from the same
+project (the Login-packet parser), with one addition: it also reads the `Nonce` claim that carries
+javabridge's per-start trust secret. `auth/hook.py` is javabridge's own code (load, self-check,
+install, and the loopback+secret trust gate). The bundled `.so` and profiles were checked for any
+of the owner's network names/paths and contain none (the shim carries only generic strings).

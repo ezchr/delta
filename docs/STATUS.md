@@ -50,10 +50,35 @@ server). Not verified live in this stage: crafting, furnaces/stations, forms/NPC
 trading, mounts, scoreboards, signs, resource packs (unit tests from the original bridge cover
 forms, NPC dialogues, command blocks, sounds, block entities, doors, packs).
 
+## Stage 2 - login and identity (DONE, 2026-11-15)
+
+Premium Java accounts are the default (`account_mode=online`). A Java login is verified with Mojang
+(encryption + session-server `hasJoined`); the verified profile drives the Bedrock identity. The
+bundled native hook (owner's xuidforward) writes a stable derived 16-digit XUID for the loopback
+login on an `online-mode=false` BDS. "online mode" here is the JAVA account mode, separate from
+BDS `server.properties online-mode` (which must stay false; the plugin warns otherwise).
+
+| # | Item | Verified how | Result |
+|---|---|---|---|
+| a | Online Java login ACCEPTED on BDS, player keyed on the stable XUID | headless 26.3 bot over loopback: `online identity: staged ... xuid=2535996142166303` -> BDS `Player connected/Spawned ... xuid: 2535996142166303`, walked 369 chunks | works |
+| b | A login WITHOUT the secret / not from loopback is NOT staged | plugin trust-gate unit test (`plugin/tests/test_hook_trust.py`, 7 cases, constant-time compare, loopback+secret both required) + live: a no-secret login connects with an EMPTY xuid | works |
+| c | Identity STABLE across logins | three sequential joins all keyed `xuid: 2535996142166303` | works |
+| d | Real Bedrock client + javabridge player together: player list does not crash | Cinnabar (Xbox-auth gamertag, real XUID) + javabridge player on one BDS; broadcast entry decoded (0 errors) and player rendered in 3D point-blank; no crash/panic in the client | works (no crash) |
+| premium | Verified Mojang UUID drives identity; invalid session rejected; stable | stubbed-session-server Go tests (`core/service/premium_test.go`): accepted login uses the VERIFIED profile UUID (not the handshake name), a 403 session is refused, same account -> same XUID | works |
+
+Fail-safe: on a BDS build with no bundled profile, ONLINE identity is disabled with a log line and
+offline still works; BDS is never crashed.
+
+Open manual confirmations: a vanilla retail Bedrock client opening the pause-menu player list
+(Cinnabar has no such screen; the crash mechanism was exercised); a 1.21.x client fully playing a
+26.3 javabridge through ViaVersion (premium auth via Velocity forwarding is PROVEN with a real
+account, but the 1.21->26.3 registry translation drops the client - see docs/LOGIN.md).
+
 ## What is stubbed / not done
 
-* Identity: `OfflineIdentity` only (Java name, UUID derived from the Java UUID, no XUID). The
-  Java listener runs offline (`online_mode` option exists, untested). Agent B owns this.
+* Identity: DONE. `OfflineIdentity` (offline) and `OnlineIdentity` (premium, the default): premium
+  Mojang verification on the Java side + the bundled xuidforward hook gives each Java player a
+  stable derived XUID on an `online-mode=false` BDS. See docs/LOGIN.md, CONFIG.md and Stage 2 below.
 * Resource packs: off by default (`packs = on` in options works as in the original bridge, but the
   Java client must reach the pack HTTP server: `pack_listen`/`pack_url`). Agent C owns packs.
 * Skins of other players: looked up from a public skin API by XUID; offline Bedrock players have

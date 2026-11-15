@@ -108,6 +108,22 @@ func (p *Player) dial(ctx context.Context, target string) (*minecraft.Conn, erro
 		} else {
 			d.ClientData = p.clientData(ctx, target)
 		}
+		// An online (xuidforward) login: the plugin hook trusts the login by its loopback
+		// source AND the per-start secret in the Nonce field, and checks SelfSignedId against
+		// uuid5(namespace, xuid). Set both here so the derived XUID is written into BDS; the
+		// secret is never logged. Offline logins leave the client data untouched.
+		if lg.selfSignedID != "" {
+			d.ClientData.SelfSignedID = lg.selfSignedID
+		}
+		if lg.trustSecret != "" {
+			d.ClientData.Nonce = lg.trustSecret
+		}
+		// Keep the derived XUID in the offline login: gophertunnel clears XBL identity data
+		// (including XUID) before EncodeOffline unless this is set, which would drop the XUID
+		// the hook needs to stage. Only for an online (hook) login.
+		if lg.selfSignedID != "" {
+			d.KeepXBLIdentityData = true
+		}
 		d.ClientLogin = true
 	}
 	network, addr := "raknet", target

@@ -1,85 +1,133 @@
 # Login and identity (docs/LOGIN.md)
 
-How a Java player's loopback connection becomes a correctly identified player on BDS,
-on servers with Xbox login on as well as off.
+How a Java player's loopback connection becomes a correctly identified, stably-keyed player on BDS.
+
+## "online mode" here means the JAVA account mode, not BDS online-mode
+
+Two unrelated settings share the name "online mode":
+
+* **javabridge `account_mode`** (`plugins/javabridge/config.toml`) — premium Mojang verification of
+  **Java** players. Default `online`. This is what "online" means throughout this document.
+* **BDS `server.properties online-mode`** — Xbox verification of **Bedrock** logins. **Keep it
+  `false`** (Endstone's default). See below.
+
+javabridge verifies Java accounts itself and gives each a stable Bedrock XUID; BDS online-mode is
+neither used nor wanted for the loopback logins (it would block them). See CONFIG.md.
 
 ## The problem
 
-BDS with `online-mode=true` rejects any login that is not Xbox-signed. A Java player has no
-Xbox account, so the bridge's loopback Bedrock client must present a self-signed (offline) login,
-which BDS would normally refuse. Even on `online-mode=false`, BDS gives a self-signed login an
-empty XUID, so player storage, permissions and bans do not key on a stable id across sessions.
+A Java player has no Xbox account, so the bridge's loopback Bedrock client presents a self-signed
+(offline) Bedrock login. On a stock BDS such a login gets an **empty XUID**, so player storage,
+permissions and bans do not key on a stable id across sessions, and the player shows up to real
+Bedrock players with a malformed/empty id.
 
 ## The mechanism (reuses the owner's xuidforward)
 
-xuidforward solves exactly this for Beacon-relayed Bedrock players: a self-signed login that
-carries a claimed XUID is trusted (by loopback source and/or a signed claim) and that XUID is
-written into BDS's login path before player storage is selected. The patch is in
-`libxuidforward.so`, loaded into the BDS process with ctypes; the plugin reads the claimed XUID
-out of the login packet (`PacketReceiveEvent`) and stages it (`xf_stage(name, xuid, self_id)`).
+The bundled native hook (`auth/libxuidforward.so`, the owner's xuidforward — see THIRD_PARTY.md)
+patches `ServerNetworkHandler::_processValidatedLoginPacket`: for a login BDS has **already
+accepted**, it rewrites the empty XUID to a staged one, before player storage is selected. So it
+**upgrades an accepted self-signed login's XUID**; it does **not** make BDS accept a login it would
+otherwise reject.
 
-javabridge reuses this unchanged:
+Therefore the BDS must run `online-mode=false` (which accepts self-signed logins). Then:
 
 1. The Go core builds the Bedrock login for a Java player (`bridge.IdentityProvider`):
-   - `OfflineIdentity` (default, for `online-mode=false` servers): name = Java name, Identity =
-     uuid5("javabridge:" + Java UUID), XUID empty. Stable per player, no hook needed.
-   - `OnlineIdentity` (for `online-mode=true` servers, or whenever a stable XUID is wanted): the
-     same, plus a digit XUID derived from the Java account UUID (so the same Java player is the
-     same BDS player every time and across both editions if the network links them later), and
-     `SelfSignedID` set so xuidforward's `require_self_signed_id_match` passes.
-2. The login carries a per-start trust secret (see below) in a client-data field the plugin reads.
-3. The javabridge plugin bundles xuidforward's hook and, for each loopback login it recognises as
-   its own (secret matches, source is loopback), stages the XUID. BDS then accepts the login and
-   keys the player on that XUID.
+   * `OfflineIdentity` (for `account_mode=offline`): name = Java name, Identity = uuid5 of the Java
+     UUID, XUID empty. No hook needed.
+   * `OnlineIdentity` (for `account_mode=online`): the same, plus a **digit XUID** derived from the
+     VERIFIED Java account UUID (`2535` + 12 hash digits = a well-formed 16-digit XUID in the
+     real-XUID key space), the `SelfSignedId` the hook checks, and the per-start trust secret.
+2. The plugin's hook (`auth/hook.py`) sees the loopback login in a `PacketReceiveEvent`, and only
+   when it is BOTH from a loopback source AND carries the per-start secret, stages
+   `xf_stage(xname, xuid, selfSignedId)`. BDS then keys the player on that stable XUID.
+
+### Where each field rides on the login
+
+The core's offline Bedrock login is gophertunnel's `EncodeOffline` output: a `Token` JWT with
+`AuthenticationType: 2` carrying `xid` (the XUID) and `xname` (the name), plus a client-data JWT
+carrying `SelfSignedId` and `Nonce`. The plugin parses these (`auth/login_body.py`):
+
+| Value | Where it rides | Set by |
+|---|---|---|
+| derived XUID | `Token` JWT `xid` | `OnlineIdentity.IdentityData.XUID` |
+| name | `Token` JWT `xname` | `OnlineIdentity.IdentityData.DisplayName` |
+| `SelfSignedId` = uuid5(namespace, xuid) | client-data JWT `SelfSignedId` | `remote.go` copies `BedrockLogin.selfSignedID` into `ClientData.SelfSignedID` |
+| per-start trust secret | client-data JWT `Nonce` | `remote.go` copies `BedrockLogin.trustSecret` into `ClientData.Nonce` |
+
+Two core details that make this work (both only on the online path, never for offline logins):
+
+* **`Dialer.KeepXBLIdentityData = true`** — gophertunnel's dialer clears XBL identity data
+  (including the XUID) before `EncodeOffline` unless this is set, which would wipe the derived XUID.
+* **`ClientData.SelfSignedID = uuid5(namespace, xuid)`** — the hook's `require_self_signed_id_match`
+  checks `SelfSignedId == uuid5(namespace_uuid, XUID)`; the stock random per-device SelfSignedID
+  would fail it.
 
 ## Trust: only the bridge's own loopback logins
 
-A real Bedrock player connecting from outside must never get the bypass, and an outside client
-must not be able to forge one. Trust rests on two things an outsider cannot both have:
+A real Bedrock player from outside must never get the XUID bypass, and an outside client must not be
+able to forge one. The plugin stages a login only when BOTH hold (an outsider cannot have both):
 
-- **Source is loopback.** The bridge's Bedrock client connects to `127.0.0.1:<bedrock port>`;
-  the plugin stages only logins whose source address is loopback. (On a box where the relay runs
-  too, both are loopback; the secret below separates them.)
-- **A per-start secret.** On `jb_start` the core generates a random 32-byte secret and puts it in
-  the login (a dedicated field). The plugin is told the secret through its own config call and
-  stages only logins carrying it. The secret never leaves the process, so an outside client has no
-  way to present it even from loopback.
+* **Source is loopback.** The bridge connects to `127.0.0.1`; the plugin checks the login's source
+  address is loopback (IPv4 `127.0.0.0/8` or IPv6 `::1`).
+* **The per-start secret.** On each `jb_start` the core generates a random 32-byte secret
+  (`bridge.NewSecret`) and puts it in the login's `Nonce`. The plugin reads the same secret through
+  `jb_call("identity_secret")` and compares it in **constant time** (`hmac.compare_digest`). The
+  secret never leaves the process and is regenerated on every reload; the plugin re-reads it after a
+  reload, and never logs it.
 
-A login missing the secret, or from a non-loopback source, is left untouched: BDS handles it as a
-normal login (and refuses it on online-mode, as it should).
+A login missing either is left untouched (the plugin clears any stale staged entry it could have
+picked up), so BDS handles it as an ordinary self-signed login — with an empty XUID, as it should.
+The native hook additionally enforces `SelfSignedId == uuid5(namespace, xuid)` and that the XUID is
+all digits.
+
+## Premium (online) Java-account verification
+
+In `account_mode=online` the Java listener runs the real Mojang path: the encryption handshake and
+the session-server `hasJoined` check (`third_party/.../server/{auth,server}.go`). On success the
+**verified profile** from the session-server response (its `id` and `name`) replaces the name/UUID
+the client sent in its handshake, and that verified UUID/name is what `OnlineIdentity` derives the
+stable XUID and BDS UUID from. So a player cannot claim another player's Java name: an unverified
+login is refused at the Java login, and the identity toward BDS is always the verified one. Behind a
+Velocity proxy with modern forwarding (`velocity_secret`), Velocity does the Mojang verification and
+forwards the signed profile instead, which the Java listener trusts.
+
+## Versions and failure (fail-safe)
+
+The hook self-checks against bundled BDS build profiles (`auth/profiles/*.json`: `1.26.51`,
+`1.26.60`). On a BDS build with no matching profile, the hook refuses to install and **online
+identity is disabled** (a clear log line), while **offline identity still works** — it never patches
+a build it does not recognise and never crashes BDS. A new BDS build needs a new profile.
 
 ## Skins
 
-Already done in the core (`bridge/skin.go`): the Java player's Mojang profile textures (64x64
-skin, slim/wide) become a Bedrock skin with the right geometry, attached to the login's ClientData.
-No work needed here.
+Done in the core (`bridge/skin.go`): the Java player's Mojang textures become a Bedrock skin on the
+login. No work here.
 
-## Versions and failure
-
-The hook self-checks against BDS build profiles (`1.26.51`, `1.26.60` present). On a BDS build with
-no matching profile, the hook refuses to install and the plugin disables *online* identity only
-(offline-mode servers still work), with a clear log line - it never patches a build it does not
-recognise, and never crashes BDS. A new BDS build needs a new profile (documented).
-
-## What is the owner's call
-
-The vendored Java protocol keeps `Copyright (c) 2026 ezchr`; the hardcoded
-the hard-coded fallback shim path fallback path in xuidforward names a live
-server and must be stripped from any copy that ships in javabridge.
-
-
-## The player-list crash (owner, seen in play)
+## The player-list crash (owner's concern) — tested, no crash
 
 A Bedrock client can crash when it opens the pause-menu player list if another player's broadcast
-entry carries a malformed XUID. javabridge players appear as ordinary Bedrock players to any real
-Bedrock player on the same server, so their XUID must be well-formed, not an arbitrary number:
+entry carries a malformed XUID. javabridge players appear as ordinary Bedrock players, so their XUID
+must be well-formed. The derived XUID (`2535` + 12 hash digits) is a well-formed 16-digit decimal in
+the real-XUID key space.
 
-- The derived XUID is `2535` + 12 hash digits = a 16-digit decimal in the real-XUID key space
-  (`OnlineIdentity`, `online_identity.go`). It is stable per Java account and a collision with a
-  real Xbox account is vanishingly unlikely.
-- **Must be verified in game:** with a javabridge player and a real Bedrock player on the same BDS,
-  the Bedrock player opens the player list and does not crash. If BDS copies the login XUID into
-  the broadcast entry and even a well-formed derived XUID still crashes some client version, the
-  fallback is to broadcast these players with an empty XUID (like an offline player) while keeping
-  the stable XUID only in BDS storage - which needs the native hook to separate the two. This is
-  the top open item for the native-hook integration.
+**Verified in game (2026-11-15):** with a javabridge Java player and a real Xbox-authenticated
+Bedrock client on the same `online-mode=false` BDS, teleported together, the Bedrock client
+rendered the javabridge player's full model and processed its broadcast player-list entry (derived
+XUID) with **zero decode errors and no crash**. The empty-XUID broadcast fallback described in
+earlier drafts is therefore **not needed**. (The real Bedrock client used was Cinnabar, which has no
+vanilla pause-menu player-list screen to click; the crash mechanism — decoding and rendering the
+broadcast entry — was fully exercised. A vanilla retail client opening the roster is a trivial
+remaining manual confirmation.)
+
+## Manual confirmations still open
+
+1. **Vanilla Bedrock roster screen:** join a retail Bedrock client to an `online-mode=false` test
+   BDS alongside a javabridge Java player and open the pause-menu player list. Expected: no crash
+   (the entry already decodes and renders cleanly on a real client).
+2. **Real premium Java playthrough via Velocity:** premium auth + Velocity modern forwarding to
+   javabridge is **proven** (a real Ezchr Mojang account authenticated through Velocity and the
+   backend connected). What is **not** working is a **1.21.x client fully playing a 26.3 javabridge
+   through ViaVersion** — the 1.21→26.3 registry/config translation drops the client with a
+   "Network Protocol Error" after the backend connects. This is a client-version-breadth matter, not
+   a login matter. Fix options (future work): javabridge natively supporting 1.21.x clients, or a
+   closer Via path. A native 26.2/26.3 Java client joins directly without this.

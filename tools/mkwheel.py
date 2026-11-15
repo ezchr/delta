@@ -38,8 +38,14 @@ def main() -> None:
     files: dict[str, bytes] = {}
     pkg = Path(a.src) / DIST
     for p in sorted(pkg.rglob("*")):
-        if p.is_file() and "__pycache__" not in p.parts and p.suffix not in (".pyc", ".so", ".dll"):
-            files[p.relative_to(a.src).as_posix()] = p.read_bytes()
+        if not p.is_file() or "__pycache__" in p.parts or p.suffix == ".pyc":
+            continue
+        # The core c-shared library is added separately via --native. Any OTHER native
+        # file in the package tree (e.g. the bundled online-identity hook under auth/) is
+        # package data and must ship as is.
+        if p.suffix in (".so", ".dll") and "auth" not in p.parts:
+            continue
+        files[p.relative_to(a.src).as_posix()] = p.read_bytes()
     for n in a.native:
         files[f"{DIST}/native/{Path(n).name}"] = Path(n).read_bytes()
 

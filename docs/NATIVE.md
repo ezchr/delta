@@ -28,7 +28,7 @@ JSON object, unknown keys ignored (`core/service/service.go`, `Config`):
 | `debug` | `false` | Debug log lines. |
 | `motd` | `""` | Java server list text. |
 | `max_players` | `20` | Shown in the Java server list. |
-| `options` | `{}` | String map passed to the bridge (see `core/bridge/config.go`). |
+| `options` | `{}` | String map passed to the bridge. Keys include `account_mode`/`online_mode` (premium vs offline Java auth), `namespace_uuid`, `session_server`, `velocity_secret`/`velocity_secret_file` (Velocity modern forwarding), `view_distance`, `lang_file`, `packs`; see docs/CONFIG.md. |
 
 ## Calls (`jb_call`)
 
@@ -41,6 +41,7 @@ JSON object, unknown keys ignored (`core/service/service.go`, `Config`):
 | `stacks` | - | All goroutine stacks (debugging). |
 | `stress` | seconds | Spike mode: preemption/GC/panic/SIGSEGV/EPIPE self-test. |
 | `goroutines` | - | Spike mode: goroutine count. |
+| `identity_secret` | - | Bridge mode: the per-start trust secret and namespace for the online-identity hook (the plugin reads it on enable; empty in offline mode). Returned only through this in-process call; never logged. |
 
 ## Rules for the host
 

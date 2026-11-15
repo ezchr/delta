@@ -48,3 +48,15 @@ particles, resource packs (`packs.go`, `entities_custom.go`), login client data 
   `ProductName`; the form/NPC click action ids are `javabridge:form`/`javabridge:npc`; the pack
   namespace is `javabridge`.
 * Logging: most per-player lines are debug.
+
+## Online identity (agent B)
+
+* `bridge/online_identity.go`: `OnlineIdentity`, the derived well-formed XUID, the per-start trust
+  secret and `SelfSignedId = uuid5(namespace, xuid)`.
+* `service/bridge.go`: `account_mode` (premium default), the identity provider, the per-start
+  secret exposed via `jb_call("identity_secret")`, `session_server` and Velocity modern-forwarding
+  options.
+* `bridge/remote.go`: stitches the secret (Nonce) and SelfSignedId into the online login and keeps
+  the derived XUID (`KeepXBLIdentityData`).
+* `plugin/src/endstone_javabridge/auth/`: the bundled xuidforward hook and the plugin-side staging
+  (loopback + constant-time secret). See docs/THIRD_PARTY.md for the credit.
