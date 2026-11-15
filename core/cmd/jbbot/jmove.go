@@ -43,6 +43,7 @@ var jsim struct {
 	flySpeed                                float32
 	flyAt                                   int
 	jumpUntil                               int
+	gapFrom, gapTo                          int // jump key released in ticks [gapFrom, gapTo) of the run (jg=A:B)
 	errTick                                 int
 	errDZ                                   float64
 	jumpFrom                                int     // hold jump from this tick of the run on (j=N)
@@ -110,6 +111,7 @@ func jrunStep(b *bot, a []string) time.Duration {
 	b.mu.Lock()
 	jsim.keys = 1 | 0x40
 	jsim.jumpFrom, jsim.turn, jsim.strafe, jsim.errTick, jsim.flyAt, jsim.jumpUntil = 0, 0, 0, 0, 0, 0
+	jsim.gapFrom, jsim.gapTo = 0, 0
 	for _, w := range a[2:] {
 		switch {
 		case w == "jump":
@@ -129,6 +131,12 @@ func jrunStep(b *bot, a []string) time.Duration {
 		case strings.HasPrefix(w, "j="):
 			jsim.keys |= 0x10
 			jsim.jumpFrom, _ = strconv.Atoi(w[2:])
+		case strings.HasPrefix(w, "jg="): // jg=A:B: jump released in ticks [A, B) (a double tap with f=B)
+			f := strings.SplitN(w[3:], ":", 2)
+			if len(f) == 2 {
+				jsim.gapFrom, _ = strconv.Atoi(f[0])
+				jsim.gapTo, _ = strconv.Atoi(f[1])
+			}
 		case strings.HasPrefix(w, "jr="): // release jump from that tick on
 			jsim.jumpUntil, _ = strconv.Atoi(w[3:])
 		case strings.HasPrefix(w, "t="):
@@ -400,6 +408,9 @@ func jsimPhysics(b *bot) bool {
 	jsim.ticks++
 	keys := jsim.keys
 	if keys != 0 && (jsim.ticks < jsim.jumpFrom || jsim.jumpUntil > 0 && jsim.ticks >= jsim.jumpUntil) {
+		keys &^= 0x10
+	}
+	if jsim.ticks >= jsim.gapFrom && jsim.ticks < jsim.gapTo {
 		keys &^= 0x10
 	}
 	var xxa float32
