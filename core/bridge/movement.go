@@ -188,13 +188,10 @@ func init() {
 		} else {
 			p.mv.flyChange = -1
 		}
-		// BDS only flies the player after this request (as a Bedrock client sends it); the
-		// StartFlying/StopFlying input flags alone are ignored and it simulates a fall.
-		if p.rem != nil {
-			p.rem.write(&packet.RequestAbility{Ability: packet.AbilityFlying, Value: flying})
-			if flying {
-				p.mv.flyRequested = time.Now()
-			}
+		// The next input tells the server (sendInput). Until then its abilities still say the
+		// old state.
+		if flying {
+			p.mv.flyRequested = time.Now()
 		}
 		return r.Err
 	})
@@ -453,8 +450,12 @@ func (p *Player) sendInput() {
 	if !jumpKey && m.wasJumpKey {
 		flags.Set(packet.InputFlagJumpReleasedRaw)
 	}
-	// A jump: the client left the ground going up with the jump key down.
-	if jumpKey && m.wasOnGround && !m.onGround && delta[1] > 0 && !p.self.flying {
+	// A jump: the client left the ground going up with the jump key down. The Java client also
+	// jumps in the tick it starts flying (a double tap whose second press is on the ground: under
+	// a low ceiling, after a short fall); BDS does not jump once it flies, so that take-off is
+	// told one input later (below) and BDS gets the jump and its sprint boost first.
+	jumped := jumpKey && m.wasOnGround && !m.onGround && delta[1] > 0
+	if jumped && (!p.self.flying || m.flyChange == 1) {
 		flags.Set(packet.InputFlagStartJumping)
 	}
 	m.wasJumpKey = jumpKey
@@ -501,13 +502,18 @@ func (p *Player) sendInput() {
 		m.swungAtAir = false
 	}
 	flags.Set(packet.InputFlagBlockBreakingDelayEnabled)
-	switch m.flyChange {
-	case 1:
-		flags.Set(packet.InputFlagStartFlying)
-	case -1:
-		flags.Set(packet.InputFlagStopFlying)
+	// BDS only flies the player after a RequestAbility (as a Bedrock client sends it); the
+	// StartFlying/StopFlying input flags alone are ignored and it simulates a fall.
+	if m.flyChange != 0 && !(m.flyChange == 1 && jumped) {
+		if m.flyChange == 1 {
+			flags.Set(packet.InputFlagStartFlying)
+			m.flyRequested = time.Now()
+		} else {
+			flags.Set(packet.InputFlagStopFlying)
+		}
+		r.write(&packet.RequestAbility{Ability: packet.AbilityFlying, Value: m.flyChange == 1})
+		m.flyChange = 0
 	}
-	m.flyChange = 0
 
 	// BDS brakes a flying player that has no move input hard (horizontal friction x0.375 in
 	// creative, x0.75 otherwise, and vertical speed x0.375: VerticalFlySpeedControlSystem), while
