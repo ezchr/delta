@@ -307,6 +307,10 @@ func (d Dialer) DialContextNetwork(ctx context.Context, network Network, address
 	var netConn net.Conn
 	if i, ok := network.(identityDialer); ok && token != "" {
 		netConn, err = i.DialContextIdentity(ctx, address, token, key)
+	} else if k, ok := network.(keyDialer); ok {
+		// javabridge: an offline login over a transport that binds its identity to the login
+		// key (a BDS with transport=nethernet closes the connection when they differ).
+		netConn, err = k.DialContextKey(ctx, address, key)
 	} else {
 		netConn, err = network.DialContext(ctx, address)
 	}

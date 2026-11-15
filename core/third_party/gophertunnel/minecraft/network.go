@@ -40,6 +40,15 @@ type identityDialer interface {
 	DialContextIdentity(ctx context.Context, address string, token string, privateKey *ecdsa.PrivateKey) (net.Conn, error)
 }
 
+// keyDialer is implemented by Networks whose transport-level identity is bound to the login's
+// key without a token from Minecraft's authorization service, such as a self-signed NetherNet
+// identity for an offline login. javabridge: local addition (see dial.go).
+type keyDialer interface {
+	// DialContextKey establishes a connection whose transport identity uses privateKey, the key
+	// the login is signed with.
+	DialContextKey(ctx context.Context, address string, privateKey *ecdsa.PrivateKey) (net.Conn, error)
+}
+
 // NetworkListener represents a listening connection to a remote server. It is the equivalent of net.Listener, but with extra
 // functionality specific to Minecraft.
 type NetworkListener interface {

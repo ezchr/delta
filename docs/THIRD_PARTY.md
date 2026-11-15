@@ -14,8 +14,13 @@ Both are vendored under `core/third_party/` and wired in with `replace` directiv
   login (logs, releases the pending slot, closes the connection) instead of ending the process.
 * `gophertunnel/minecraft/dial.go`: `listenConn` recovers a panic while handling a packet (logs,
   cancels the dial / closes the connection).
+* `gophertunnel/minecraft/{network,dial}.go`: a `keyDialer` interface; `DialContextNetwork` hands
+  the login's private key to a network that implements it (when there is no authorization-service
+  token). The bridge's loopback NetherNet transport (`core/bridge/nethernet.go`) needs it: a BDS
+  with `transport=nethernet` closes the connection when the NetherNet identity key is not the key
+  the Login is signed with.
 
-Both are marked with a `javabridge:` comment.
+All are marked with a `javabridge:` comment.
 
 ## Updating
 
