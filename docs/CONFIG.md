@@ -10,6 +10,7 @@ account_mode = "online"    # "online" (premium, DEFAULT) or "offline" (see below
 
 [bedrock]
 port = 0                   # this server's own Bedrock port over loopback; 0 = server.properties
+transport = "auto"         # "auto" (follows server.properties transport), "raknet" or "nethernet"
 
 [core]
 mode = "bridge"            # "bridge" (normal) or "spike" (native self-test)
@@ -55,6 +56,29 @@ BDS `online-mode` adds nothing and only blocks Java players. If you leave BDS `o
 with the hook enabled, the plugin logs a warning telling you to set it to `false`.
 
 (Real Bedrock players are unaffected either way: they still log in with their own Xbox identity.)
+
+## Bedrock transport (`[bedrock] transport`)
+
+Each Java player is one loopback Bedrock connection to this server. BDS has two transports
+(`server.properties` `transport=`):
+
+* **`raknet`**: the bridge dials `127.0.0.1:<port>` over RakNet, as before.
+* **`nethernet`**: BDS opens **no RakNet port at all**; it serves NetherNet's HTTP signaling on its
+  TCP `server-port` and WebRTC over UDP. The bridge then dials `http://127.0.0.1:<port>` over
+  NetherNet (`core/bridge/nethernet.go`). No Xbox account or token is needed: BDS requires *a*
+  connection identity on every NetherNet peer (an offer without one is refused, signal error 37),
+  but accepts a self-signed one (a fresh key per connection, the same key the Bedrock login is
+  signed with). The bridge gathers loopback ICE candidates only, so the connection stays on the
+  machine and the player's address is `127.0.0.1` (the online-identity hook's loopback check
+  works unchanged).
+
+`transport = "auto"` (the default, also when the key is missing) reads `server.properties` and
+picks the right one; `"raknet"` / `"nethernet"` force it. On NetherNet, `server-ip` (if set to a
+specific address) is used as the signaling host instead of `127.0.0.1`.
+
+Keep the NetherNet `server-port` (TCP) and the UDP ports reachable on loopback; firewalling them
+from outside is fine. Everything else (identity hook, `online-mode=false`, account modes) is the
+same on both transports.
 
 ## Advanced options (`[core.options]`, all strings)
 

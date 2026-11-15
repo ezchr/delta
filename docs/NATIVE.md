@@ -23,7 +23,7 @@ JSON object, unknown keys ignored (`core/service/service.go`, `Config`):
 |---|---|---|
 | `mode` | `"bridge"` | `"bridge"`, or `"spike"` (self-test: TCP echo listener and the `stress` call). |
 | `listen` | `"0.0.0.0:25565"` | Java listener address. |
-| `bedrock` | `"127.0.0.1:19132"` | The server's own Bedrock (RakNet) address over loopback. |
+| `bedrock` | `"127.0.0.1:19132"` | The server's own Bedrock address over loopback: `host:port` (RakNet), `tcp:host:port`, or `nethernet:host:port` for a BDS with `transport=nethernet` (the plugin picks this from server.properties; see CONFIG.md). |
 | `data_dir` | `""` | Directory the core may write to (caches). |
 | `debug` | `false` | Debug log lines. |
 | `motd` | `""` | Java server list text. |

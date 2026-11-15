@@ -86,12 +86,46 @@ account, but the 1.21->26.3 registry translation drops the client - see docs/LOG
 * `/jb status|ping|reconnect` is the only bridge command.
 * Windows build: not done (see Build).
 
+## NetherNet servers (DONE, 2026-11-15)
+
+A BDS with `transport=nethernet` (BDS 1.26.60.6, Endstone 0.11.15) opens no RakNet port, so the
+RakNet loopback dial was refused. Now the plugin reads `server.properties` (`[bedrock] transport =
+"auto"`) and the core dials the server's NetherNet signaling (`http://127.0.0.1:<server-port>`)
+instead (`core/bridge/nethernet.go`, CONFIG.md "Bedrock transport").
+
+Approach chosen: a NetherNet dial in the core, with a **self-signed connection identity, no Xbox
+token**. Rejected: making BDS also listen on RakNet. In 1.26.60 `NetworkSystem` holds ONE
+`RemoteConnector` (a `RakNetConnector` or a `NetherNetConnector`, picked from `transport`), not the
+old composite connector; a second, RakNet listener would mean constructing a `RakNetConnector`
+in-process (stripped binary, unknown constructor and layout), wiring its connection callbacks,
+ticking it and routing closes for its peers - per build, with a real risk of crashing BDS. The
+NetherNet dial needs no patching of BDS at all.
+
+| Check | How | Result |
+|---|---|---|
+| Anonymous NetherNet offer | standalone go-nethernet probe -> test BDS | refused, signal error 37 (also with `online-mode=false`) |
+| Self-signed identity (fresh P-384 key, `idp.domain` "self" or the auth service URL) | probe | accepted (~0.7-1.1 s) on `online-mode=false` AND `online-mode=true` |
+| Server-style identity (JWK token) | probe | refused (37) |
+| Identity key != Login key | first bridge build | BDS closes right after the Login ("the server refused: no reason given"); fixed by signing the NetherNet identity with the Login's key (gophertunnel `keyDialer`, THIRD_PARTY.md) |
+| Java join, account_mode=online + hook | 26.3 bot | `online identity: staged ['NNBot1'] xuid=2535991169975246` -> `[xuidforward] restored xuid=...` -> `Player connected/Spawned: NNBot1 xuid: 2535991169975246`; 369 chunks, chat, `/list`, sprint walk |
+| Loopback trust gate | same | staged = Endstone saw the NetherNet peer as 127.0.0.1 (loopback-only ICE candidates) |
+| account_mode=offline | bot | joined with an empty XUID, 369 chunks, chat |
+| Two Java players at once | 2 bots | both joined, keyed on their own XUIDs, both left cleanly |
+| `/reload`, leak | rejoin after `/reload`; `/jbcore goroutines` | rejoin works; goroutines back to 3 |
+| BDS restart right after a join | stop + start at once | starts (signaling connections are closed with a reset, so BDS's port is not left in TIME_WAIT; with plain closes BDS failed with "Port [..] may be in use" for a minute) |
+| RakNet regression | same server, `transport=raknet` | joined, 369 chunks, chat |
+| `online-mode=true` | bot | NetherNet connects, the self-signed Login is refused (same as RakNet; the plugin's existing warning applies) |
+
+Limits: relies on BDS accepting self-signed NetherNet identities (true on 1.26.60.6; see Open
+problems 1). Each join costs one HTTP request to the local signaling port and a WebRTC handshake
+(~0.7 s on loopback). The NetherNet ports must accept loopback traffic.
+
 ## Open problems (by risk)
 
-1. **NetherNet-only servers**: a BDS with `transport=nethernet` cannot be joined over loopback
-   without an Xbox-signed identity (NetherNet refuses anonymous peers). Main target (RakNet) is
-   fine. Possible ways: an Xbox account token for the bridge, or hooking BDS's network layer
-   in-process. Not started.
+1. **NetherNet servers depend on BDS accepting a self-signed connection identity.** Done (see
+   "NetherNet servers" above). If a future BDS build insists on an identity issued by Xbox
+   services, the fallback is an Xbox account token for the bridge (one account signs every
+   connection's NetherNet identity; the Bedrock login stays self-signed); not built.
 2. **Knockback/teleport corrections**: when mobs hit the player, BDS corrects by ~0.5-1 block
    (logged at debug "server corrected our movement"); after `/tp` into unloaded chunks the client
    falls a few blocks before the column arrives and gets corrected back (BDS does not kill for it).
@@ -138,6 +172,7 @@ listen = "0.0.0.0:25565"
 motd = "..."
 [bedrock]
 port = 0            # 0 = the server's own port
+transport = "auto"  # follows server.properties transport (raknet / nethernet)
 [core]
 mode = "bridge"
 debug = false
