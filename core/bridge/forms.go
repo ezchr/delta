@@ -37,24 +37,24 @@ type formState struct {
 
 type bedrockForm struct {
 	Type     string          `json:"type"`
-	Title    string          `json:"title"`
+	Title    formText        `json:"title"`
 	Content  json.RawMessage `json:"content"`
 	Elements []formElement   `json:"elements"`
 	Buttons  []formElement   `json:"buttons"`
-	Button1  string          `json:"button1"`
-	Button2  string          `json:"button2"`
+	Button1  formText        `json:"button1"`
+	Button2  formText        `json:"button2"`
 }
 
 type formElement struct {
 	Type        string   `json:"type"`
-	Text        string   `json:"text"`
+	Text        formText   `json:"text"`
 	Default     any      `json:"default"`
-	Placeholder string   `json:"placeholder"`
+	Placeholder formText   `json:"placeholder"`
 	Min         float64  `json:"min"`
 	Max         float64  `json:"max"`
 	Step        float64  `json:"step"`
-	Options     []string `json:"options"`
-	Steps       []string `json:"steps"`
+	Options     []formText `json:"options"`
+	Steps       []formText `json:"steps"`
 }
 
 func init() {
@@ -101,7 +101,7 @@ func (p *Player) showForm(pk *packet.ModalFormRequest) {
 	w.VarInt(0) // a dialog given inline
 	w.Byte(text.TagCompound)
 	text.StringTag(w, "type", "minecraft:multi_action")
-	title := bedrockText(bf.Title)
+	title := bedrockText(string(bf.Title))
 	text.ComponentTag(w, "title", &title)
 	text.BoolTag(w, "pause", false)
 	text.StringTag(w, "after_action", "close")
@@ -120,21 +120,21 @@ func (p *Player) showForm(pk *packet.ModalFormRequest) {
 		for _, e := range elems {
 			switch e.Type {
 			case "", "button":
-				buttons = append(buttons, e.Text)
+				buttons = append(buttons, string(e.Text))
 			case "label", "header":
-				body = appendBody(body, e.Text)
+				body = appendBody(body, string(e.Text))
 			}
 		}
 	case "modal":
 		var content string
 		_ = json.Unmarshal(bf.Content, &content)
 		body = appendBody(body, content)
-		buttons = []string{bf.Button1, bf.Button2}
+		buttons = []string{string(bf.Button1), string(bf.Button2)}
 	case "custom_form":
 		_ = json.Unmarshal(bf.Content, &inputs)
 		for _, e := range inputs {
 			if e.Type == "label" || e.Type == "header" {
-				body = appendBody(body, e.Text)
+				body = appendBody(body, string(e.Text))
 			}
 		}
 	}
@@ -220,7 +220,7 @@ func writeInputs(w *wire.Writer, elems []formElement) {
 			continue
 		}
 		text.StringTag(w, "key", "e"+strconv.Itoa(i))
-		label := bedrockText(e.Text)
+		label := bedrockText(string(e.Text))
 		switch e.Type {
 		case "input":
 			text.StringTag(w, "type", "minecraft:text")
@@ -256,7 +256,7 @@ func writeInputs(w *wire.Writer, elems []formElement) {
 				opts = e.Steps
 			}
 			if len(opts) == 0 {
-				opts = []string{""}
+				opts = []formText{""}
 			}
 			def := 0
 			if d, ok := e.Default.(float64); ok {
@@ -267,7 +267,7 @@ func writeInputs(w *wire.Writer, elems []formElement) {
 			text.ListStart(w, "options", text.TagCompound, len(opts))
 			for j, o := range opts {
 				text.StringTag(w, "id", strconv.Itoa(j))
-				c := bedrockText(o)
+				c := bedrockText(string(o))
 				text.ComponentTag(w, "display", &c)
 				if j == def {
 					text.BoolTag(w, "initial", true)
@@ -448,3 +448,18 @@ func readClickPayload(b []byte) (map[string]any, error) {
 }
 
 var _ = strings.TrimSpace
+
+// formText is a form's text: script forms (the Script API's ActionFormData and friends) send raw
+// text objects ({"rawtext":[...]}, {"translate":...}) where command forms send strings. Both
+// decode to the text with colour codes.
+type formText string
+
+func (t *formText) UnmarshalJSON(b []byte) error {
+	var s string
+	if json.Unmarshal(b, &s) == nil {
+		*t = formText(s)
+		return nil
+	}
+	*t = formText(rawText(string(b)))
+	return nil
+}
