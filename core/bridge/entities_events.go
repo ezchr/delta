@@ -347,6 +347,7 @@ func (p *Player) mobEffect(pk *packet.MobEffect) {
 	if pk.EntityRuntimeID != p.rem.gd.EntityRuntimeID {
 		return // others' effects show as particles from their data (entities_props.go)
 	}
+	p.log.Debug("server effect", "op", pk.Operation, "type", pk.EffectType, "java", bedrockEffects[pk.EffectType], "amplifier", pk.Amplifier, "duration", pk.Duration, "particles", pk.Particles, "ambient", pk.Ambient)
 	switch pk.Operation {
 	case packet.MobEffectAdd, packet.MobEffectModify:
 		ef := selfEffect{amplifier: pk.Amplifier, duration: pk.Duration, particles: pk.Particles, ambient: pk.Ambient, at: time.Now()}
