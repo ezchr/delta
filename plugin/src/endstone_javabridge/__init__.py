@@ -36,6 +36,9 @@ account_mode = "online"
 [bedrock]
 # This server's own Bedrock port over loopback. 0 = the port from server.properties.
 port = 0
+# How the bridge reaches this server over loopback: "auto" (default) follows server.properties
+# `transport` (RakNet, or NetherNet for transport=nethernet); "raknet" or "nethernet" force one.
+transport = "auto"
 
 [core]
 # "bridge" (normal) or "spike" (native library self-test).
@@ -83,6 +86,7 @@ class JavaBridgePlugin(Plugin):
             raw = tomllib.load(f)
         java, bedrock, core = raw.get("java", {}), raw.get("bedrock", {}), raw.get("core", {})
         port = int(bedrock.get("port", 0)) or int(self.server.port)
+        target = self._bedrock_target(str(bedrock.get("transport", "auto")), port)
         options = {str(k): str(v) for k, v in core.get("options", {}).items()}
         # The Java account mode drives the core's online_mode and identity provider. Kept as an
         # option so one config knob ("account_mode") controls both without changing the native
@@ -95,7 +99,7 @@ class JavaBridgePlugin(Plugin):
             "listen": java.get("listen", "0.0.0.0:25565"),
             "motd": java.get("motd", ""),
             "max_players": int(self.server.max_players),
-            "bedrock": f"127.0.0.1:{port}",
+            "bedrock": target,
             "data_dir": str(folder),
             "options": options,
         }
@@ -119,8 +123,9 @@ class JavaBridgePlugin(Plugin):
         self._task = self.server.scheduler.run_task(self, self._drain, delay=1, period=1)
         self._setup_identity()
 
-    def _bds_online_mode(self) -> bool:
-        """Read BDS's server.properties online-mode (default false in Endstone). Best-effort."""
+    def _server_properties(self) -> dict:
+        """BDS's server.properties as a dict (empty when unreadable). Best-effort."""
+        out: dict = {}
         try:
             # server.properties sits next to the server binary; the plugin runs with the
             # server folder as the working directory.
@@ -129,12 +134,41 @@ class JavaBridgePlugin(Plugin):
                 if props.exists():
                     for line in props.read_text(encoding="utf-8", errors="replace").splitlines():
                         line = line.strip()
-                        if line.startswith("online-mode="):
-                            return line.split("=", 1)[1].strip().lower() == "true"
+                        if line and not line.startswith("#") and "=" in line:
+                            k, v = line.split("=", 1)
+                            out[k.strip()] = v.strip()
                     break
         except Exception:  # noqa: BLE001
             pass
-        return False
+        return out
+
+    def _bds_online_mode(self) -> bool:
+        """Read BDS's server.properties online-mode (default false in Endstone). Best-effort."""
+        return self._server_properties().get("online-mode", "").lower() == "true"
+
+    def _bedrock_target(self, transport: str, port: int) -> str:
+        """The core's Bedrock target for this server: "127.0.0.1:<port>" (RakNet), or
+        "nethernet:<host>:<port>" when this BDS runs transport=nethernet (it then has no RakNet
+        port; the core dials its NetherNet signaling on the TCP server-port over loopback)."""
+        props = self._server_properties()
+        transport = transport.strip().lower() or "auto"
+        if transport not in ("auto", "raknet", "nethernet"):
+            self.logger.warning(f'[bedrock] transport = "{transport}" is not auto/raknet/nethernet; using auto')
+            transport = "auto"
+        if transport == "auto":
+            transport = "nethernet" if props.get("transport", "").lower() == "nethernet" else "raknet"
+        if transport != "nethernet":
+            return f"127.0.0.1:{port}"
+        # server-ip binds NetherNet's signaling server (it is ignored for RakNet). Unset or a
+        # wildcard: loopback. A specific local address: dial that one (still this machine).
+        host = props.get("server-ip", "").strip().strip("[]")
+        if host in ("", "0.0.0.0", "::"):
+            host = "127.0.0.1"
+        if ":" in host:
+            host = f"[{host}]"
+        self.logger.info("this server runs transport=nethernet: Java players are connected to it over "
+                         "loopback NetherNet (no RakNet port needed, no Xbox account needed)")
+        return f"nethernet:{host}:{port}"
 
     def _setup_identity(self) -> None:
         # The core hands out the per-start trust secret (online/premium mode only). An empty
