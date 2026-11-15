@@ -35,6 +35,9 @@ type BedrockLogin struct {
 	// ClientData, when set, is sent as is; nil = the bridge's own (a Windows client's device
 	// data and the Java player's skin, clientdata.go/skin.go).
 	ClientData *login.ClientData
+	// trustSecret is the per-start secret the plugin hook checks before it stages the login's
+	// XUID (online_identity.go). The service writes it into the client data field the plugin reads.
+	trustSecret string
 }
 
 // IdentityProvider makes the Bedrock login for a Java player. It runs once per Java login, on
