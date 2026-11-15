@@ -129,6 +129,8 @@ func (p *Player) dial(ctx context.Context, target string) (*minecraft.Conn, erro
 	network, addr := "raknet", target
 	if a, ok := strings.CutPrefix(addr, "tcp:"); ok {
 		network, addr = "tcp", a
+	} else if a, ok := strings.CutPrefix(addr, netherNetPrefix); ok {
+		network, addr = netherNetNetwork, netherNetURL(a) // nethernet.go
 	}
 	if !strings.Contains(addr, ":") {
 		addr += ":19132"

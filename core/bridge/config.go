@@ -29,7 +29,8 @@ const ProductName = "javabridge"
 type Config struct {
 	Log *slog.Logger
 	// Target is the Bedrock server every Java player is connected to ("host:port", RakNet;
-	// "tcp:host:port" for gophertunnel's TCP transport).
+	// "tcp:host:port" for gophertunnel's TCP transport; "nethernet:host:port" for a BDS with
+	// transport=nethernet, see nethernet.go).
 	Target string
 	// DataDir holds what the bridge keeps on disk (skins, device ids, pack cache). "" = none:
 	// nothing is cached.

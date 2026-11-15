@@ -194,7 +194,7 @@ func bedrockLanguage(locale string) string {
 
 // loginServerAddress is the address a client puts in its login for target (host:port).
 func loginServerAddress(target string) string {
-	addr := strings.TrimPrefix(target, "tcp:")
+	addr := strings.TrimPrefix(strings.TrimPrefix(target, "tcp:"), netherNetPrefix)
 	if !strings.Contains(addr, ":") {
 		addr += ":19132"
 	}

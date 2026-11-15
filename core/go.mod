@@ -4,15 +4,16 @@ go 1.26.7
 
 require (
 	github.com/df-mc/dragonfly v0.11.5
+	github.com/df-mc/go-nethernet v1.0.27
 	github.com/go-gl/mathgl v1.2.0
 	github.com/google/uuid v1.6.0
+	github.com/pion/webrtc/v4 v4.2.26
 	github.com/sandertv/gophertunnel v1.63.0
 )
 
 require (
 	github.com/coder/websocket v1.8.14 // indirect
 	github.com/coreos/go-oidc/v3 v3.17.0 // indirect
-	github.com/df-mc/go-nethernet v1.0.27 // indirect
 	github.com/df-mc/go-playfab/v2 v2.0.2 // indirect
 	github.com/df-mc/go-xsapi/v2 v2.0.3 // indirect
 	github.com/df-mc/jsonc v1.0.5 // indirect
@@ -34,7 +35,6 @@ require (
 	github.com/pion/stun/v4 v4.0.1 // indirect
 	github.com/pion/transport/v5 v5.1.4 // indirect
 	github.com/pion/turn/v5 v5.1.3 // indirect
-	github.com/pion/webrtc/v4 v4.2.26 // indirect
 	github.com/sandertv/go-raknet v1.15.2 // indirect
 	github.com/wlynxg/anet v0.0.5 // indirect
 	golang.org/x/crypto v0.48.0 // indirect
