@@ -3,6 +3,7 @@ package bridge
 import (
 	"bytes"
 	"math"
+	"strings"
 
 	"javabridge/core/internal/javamap"
 
@@ -257,6 +258,10 @@ func (p *Player) writeEntityData(d dataWriter, e *entity) {
 		return 0
 	}
 	kind := e.t.kind
+	if kind&entText != 0 {
+		p.writeTextData(d, e)
+		return
+	}
 
 	// Entity.
 	d.byteVal(0, bit(protocol.EntityDataFlagOnFire, 0x01)|bit(protocol.EntityDataFlagSneaking, 0x02)|
@@ -373,6 +378,13 @@ func (p *Player) writeEntityData(d dataWriter, e *entity) {
 		var js jitem.Stack
 		d.head(9, serItemStack)
 		if frameItem(e.frameNBT, &js) {
+			if it, ok := e.frameNBT["Item"].(map[string]any); ok {
+				// A custom item: paper with the converted pack's model and name, as in inventories.
+				if name, _ := it["Name"].(string); name != "" && !strings.HasPrefix(name, "minecraft:") {
+					js.ID = javaPaper
+					p.packItem(name, &js)
+				}
+			}
 			js.EncodeFor(d.w, jitem.For(p.ver()))
 		} else {
 			jitem.WriteEmpty(d.w)

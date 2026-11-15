@@ -24,6 +24,7 @@ const (
 	entProjectile                        // client-simulated: velocity matters
 	entArrow                             // AbstractArrow: 8 flags (0x01 critical)
 	entDragon                            // the client makes 8 part entities with the next ids
+	entText                              // a custom actor shown as its name tag (entities_text.go)
 )
 
 // entityType is how one Bedrock actor type is shown to Java players.

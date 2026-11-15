@@ -113,6 +113,9 @@ func entityUUID(rid uint64) uuid.UUID {
 // addActor shows an AddActor.
 func (p *Player) addActor(pk *packet.AddActor) {
 	t, ok := entityTypes[pk.EntityType]
+	if !ok && p.addTextActor(pk) {
+		return
+	}
 	if !ok || t.java == "" {
 		if _, seen := loggedTypes.LoadOrStore(pk.EntityType, true); !seen {
 			p.log.Debug("no Java entity for this actor type; not shown", "type", pk.EntityType)
