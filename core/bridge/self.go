@@ -408,7 +408,15 @@ func (p *Player) setGameType(t int32) {
 	if t == 5 {
 		t = p.rem.gd.WorldGameMode
 	}
+	changed := t != s.baseMode
 	s.baseMode, s.mode = t, javaGameMode(t)
+	if changed {
+		// BDS sends no abilities with a game type: a Bedrock client works out itself that flight
+		// goes with creative and spectator and ends with them. The old may-fly would let a
+		// player put back into survival keep flying (BDS grants the RequestAbility).
+		s.mayFly = s.mode == GameCreative || s.mode == GameSpectator
+		s.flying = s.mode == GameSpectator || s.flying && s.mayFly
+	}
 	p.sendGameMode(s.mode)
 	p.sendAbilities(s.mode, s.mayFly, s.flying, s.flySpeed)
 	p.sendMovementAttributes()
