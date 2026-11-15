@@ -208,6 +208,15 @@ func (b *builder) blockModel(name string, comps map[string]any) (string, bool) {
 	if mats == nil {
 		mats = mi
 	}
+	if len(mats) == 0 {
+		// No material_instances: the resource pack's blocks.json names the textures.
+		if faces, ok := b.blocksTex[name]; ok {
+			mats = map[string]any{}
+			for f, t := range faces {
+				mats[f] = map[string]any{"texture": t}
+			}
+		}
+	}
 	texFor := func(f string) (texInfo, bool) {
 		m, _ := mats[f].(map[string]any)
 		if m == nil {

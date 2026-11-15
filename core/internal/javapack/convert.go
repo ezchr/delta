@@ -103,8 +103,9 @@ type builder struct {
 	res   *Result
 
 	lang        map[string]string
-	itemTex     map[string]string // item_texture.json short name -> path
-	terrainTex  map[string]string // terrain_texture.json short name -> path
+	itemTex     map[string]string            // item_texture.json short name -> path
+	terrainTex  map[string]string            // terrain_texture.json short name -> path
+	blocksTex   map[string]map[string]string // blocks.json: block -> face (or "*") -> terrain short name
 	geos        map[string]*geometry
 	texDone     map[string]texInfo // source path + kind -> Java texture
 	usedSafe    map[string]bool
@@ -119,7 +120,7 @@ type texInfo struct {
 // Convert builds the Java pack.
 func Convert(in *Input) (*Result, error) {
 	b := &builder{in: in, files: map[string][]byte{}, lang: map[string]string{},
-		itemTex: map[string]string{}, terrainTex: map[string]string{}, geos: map[string]*geometry{},
+		itemTex: map[string]string{}, terrainTex: map[string]string{}, blocksTex: map[string]map[string]string{}, geos: map[string]*geometry{},
 		texDone: map[string]texInfo{}, usedSafe: map[string]bool{}, blockStates: map[string]map[string]string{},
 		res: &Result{ItemModels: map[string]string{}, ItemNames: map[string]string{}, Blocks: map[string]int{},
 			Entities: map[string]Entity{}}}
@@ -128,6 +129,7 @@ func Convert(in *Input) (*Result, error) {
 		b.readLang(s)
 		b.readTextureList(s, "textures/item_texture.json", b.itemTex)
 		b.readTextureList(s, "textures/terrain_texture.json", b.terrainTex)
+		b.readBlocksJSON(s)
 		for _, n := range s.Files("models/") {
 			if strings.HasSuffix(n, ".json") {
 				f, _ := s.File(n)
@@ -308,6 +310,14 @@ func (b *builder) texture(dir, p string) (texInfo, bool) {
 	}
 	data, tga, ok := b.findTexture(p)
 	if !ok {
+		// Not in the packs: a vanilla texture the add-on reuses by its Bedrock name
+		// ("nether_star", "book_writable"), which the Java client has under its own name.
+		kind := dir
+		if java, ok := javaTextureFor(kind, strings.TrimPrefix(strings.ToLower(p), "textures/")); ok {
+			t := texInfo{id: "minecraft:" + java, size: image.Point{16, 16}}
+			b.texDone[key] = t
+			return t, true
+		}
 		return texInfo{}, false
 	}
 	png, size, err := toPNG(data, tga)
@@ -461,4 +471,44 @@ func (b *builder) itemName(id string, comps map[string]any) string {
 		}
 	}
 	return ""
+}
+
+// readBlocksJSON reads a pack's blocks.json, where older packs (and many add-ons) name a custom
+// block's textures instead of the block's material_instances: "textures" is one terrain texture
+// for every face or an object by face ("up", "down", "side", or each side by name).
+func (b *builder) readBlocksJSON(s *Source) {
+	var f map[string]json.RawMessage
+	if !s.readJSON("blocks.json", &f) {
+		return
+	}
+	for name, raw := range f {
+		var e struct {
+			Textures json.RawMessage `json:"textures"`
+		}
+		if json.Unmarshal(raw, &e) != nil || len(e.Textures) == 0 {
+			continue
+		}
+		faces := map[string]string{}
+		var one string
+		var byFace map[string]string
+		switch {
+		case json.Unmarshal(e.Textures, &one) == nil && one != "":
+			faces["*"] = one
+		case json.Unmarshal(e.Textures, &byFace) == nil:
+			for k, v := range byFace {
+				if k == "side" {
+					for _, sd := range []string{"north", "south", "west", "east"} {
+						if _, ok := byFace[sd]; !ok {
+							faces[sd] = v
+						}
+					}
+					continue
+				}
+				faces[k] = v
+			}
+		}
+		if len(faces) > 0 {
+			b.blocksTex[name] = faces
+		}
+	}
 }
