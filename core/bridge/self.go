@@ -44,6 +44,12 @@ type selfState struct {
 	opLevel byte
 }
 
+// canFly reports whether the player may toggle flight (the abilities' may-fly, or the game mode
+// before the abilities came).
+func (s *selfState) canFly() bool {
+	return s.mayFly || s.mode == GameCreative || s.mode == GameSpectator
+}
+
 // levelClock is the time and weather of the level.
 type levelClock struct {
 	time          int64

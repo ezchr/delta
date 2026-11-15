@@ -179,8 +179,7 @@ func init() {
 	OnJava(v777.ServerboundPlayPlayerAbilities, func(p *Player, r *wireReader) error {
 		flying := r.Byte()&2 != 0
 		s := &p.self
-		allowed := s.mayFly || s.mode == GameCreative || s.mode == GameSpectator
-		if !allowed || flying == s.flying {
+		if !s.canFly() || flying == s.flying {
 			return r.Err
 		}
 		s.flying = flying
@@ -435,7 +434,15 @@ func (p *Player) sendInput() {
 
 	jumpKey := m.keys&keyJump != 0
 	if jumpKey {
-		flags.Set(packet.InputFlagJumpDown)
+		// BDS toggles the flight of a player that may fly itself when JumpDown comes on twice
+		// within a few ticks (Bedrock's double tap), without saying so in its abilities. The Java
+		// client's own double tap already toggles it (player_abilities, RequestAbility): with
+		// both, a double-tap take-off turned flight on and off again and BDS simulated a fall
+		// under the flying client (and flew under a client that had landed). So a player that
+		// may fly sends no JumpDown; jumping and flying up need Jumping and WantUp only.
+		if !p.self.canFly() {
+			flags.Set(packet.InputFlagJumpDown)
+		}
 		flags.Set(packet.InputFlagJumping)
 		flags.Set(packet.InputFlagWantUp)
 		flags.Set(packet.InputFlagJumpCurrentRaw)
