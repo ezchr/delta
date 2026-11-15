@@ -599,7 +599,7 @@ func (l *Listener) configure(c *wire.Conn, ver *version.Version, local bool) (Cl
 				// The release or one of its patches (26.2, 26.2.1): the same protocol has the same
 				// registries. An exact match left a patched client (Lunar on 26.2) without any of
 				// our resource packs.
-				if ns == "minecraft" && pid == "core" && (pv == ver.Name || strings.HasPrefix(pv, ver.Name+".") || local) {
+				if ns == "minecraft" && pid == "core" && (pv == ver.Name || strings.HasPrefix(pv, ver.Name+".")) {
 					core = true
 				}
 				if ns == "minecraft" && pid == "core" && l.cfg.Log != nil {
@@ -612,7 +612,7 @@ func (l *Listener) configure(c *wire.Conn, ver *version.Version, local bool) (Cl
 			// Without the core pack the client can't fill in the entries we send by name only, so it
 			// gets vanilla's registries with their data, as vanilla does.
 			var full [][]byte
-			if !core && !local {
+			if !core {
 				full = ver.FullRegistryData()
 			}
 			for k := 0; i < len(pk); i++ {
