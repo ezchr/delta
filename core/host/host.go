@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"runtime"
 	"runtime/debug"
 	"strings"
 	"sync"
@@ -59,6 +60,9 @@ func (l *Logs) Add(level Level, format string, args ...any) {
 	l.recs = append(l.recs, Record{Level: level, Msg: msg})
 	l.mu.Unlock()
 }
+
+// DebugOn reports whether debug records are kept.
+func (l *Logs) DebugOn() bool { return l.debugOn() }
 
 func (l *Logs) debugOn() bool {
 	l.mu.Lock()
@@ -214,6 +218,14 @@ func Call(req []byte) (out []byte) {
 	}
 	if err := json.Unmarshal(req, &in); err != nil {
 		return answer(nil, fmt.Errorf("bad request: %w", err))
+	}
+	switch in.Method {
+	case "goroutines":
+		// Works whether or not a service runs: the leak check after stop.
+		return answer(runtime.NumGoroutine(), nil)
+	case "stacks":
+		buf := make([]byte, 1<<20)
+		return answer(string(buf[:runtime.Stack(buf, true)]), nil)
 	}
 	if in.Method == "debug" {
 		var on bool

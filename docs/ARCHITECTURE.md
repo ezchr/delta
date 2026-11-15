@@ -1,0 +1,116 @@
+# javabridge architecture
+
+javabridge lets Java Edition players join a Bedrock Dedicated Server that runs
+[Endstone](https://github.com/EndstoneMC/endstone). It is **one Endstone plugin wheel**: drop it
+into `plugins/`, nothing else to install or run.
+
+```
+Java client ──TCP──► [Java listener]  ─┐
+                                       │  inside the BDS process (Go c-shared library,
+Java client ──TCP──► [Java listener]  ─┤  loaded by the Python plugin)
+                                       │
+                     per player: translator ──RakNet over loopback──► BDS's own Bedrock port
+```
+
+To BDS a Java player is an ordinary Bedrock player (a loopback client connection), so commands,
+permissions and other plugins work on them unchanged.
+
+## Repository layout
+
+| Path | Owner | What |
+|---|---|---|
+| `core/` | core | Go module `javabridge/core`. |
+| `core/cmd/libjavabridge` | core | The c-shared library: C exports only (`jb_*`, see NATIVE.md). |
+| `core/host` | core | Host side of the library: one running service, log queue, panic-safe goroutines. |
+| `core/service` | core | JSON config -> running service (`bridge` mode, `spike` self-test), slog -> host log queue. |
+| `core/bridge` | core | The translator, one package, one file per area (see below). |
+| `core/internal/blocks` | core | The server's block palette (StartGame) -> Java states, light/collision data, break data. |
+| `core/internal/javamap` | core | Bedrock -> Java tables (blocks, biomes, items), generated data. |
+| `core/internal/sounds` | core | Sound/particle tables. |
+| `core/internal/javapack` | core (for now) | Bedrock -> Java resource pack conversion used by `bridge/packs.go`. `packconv/` (agent C) is meant to replace it; until then the bridge uses this copy. |
+| `core/cmd/jbbot` | core | Scripted headless Java 26.3 test client (steps: walk, jump, chat, cmd, inventory, entities...). |
+| `core/tools/cmdcheck` | core | Java helper for `TestJavaClientCommands` (runs the real client's command parser; needs a client jar). |
+| `core/third_party/` | core | Vendored forks: Dragonfly's Java protocol packages and gophertunnel (THIRD_PARTY.md). |
+| `plugin/` | B | The Endstone Python plugin (`endstone_javabridge`). `_native.py` (the loader) is the core's interface; keep its API. |
+| `packconv/` | C | Bedrock -> Java resource pack conversion (Go). |
+| `tools/mkwheel.py` | core | Builds the wheel without a build backend. |
+| `build.sh` | core | Builds the library and the wheel. |
+| `docs/` | all | This file, NATIVE.md (C interface), STATUS.md, ORIGIN.md, THIRD_PARTY.md. |
+
+The project name is in one place per language: `bridge.ProductName` (Go, what players see),
+`NAME` in `tools/mkwheel.py` (wheel/dist name), the package directory `endstone_javabridge`
+(Endstone requires `endstone_<name>`), and the Go module path `javabridge/core`.
+
+## Process model
+
+* The plugin loads the library once per process (`_native.load`) and calls `jb_start(config)`
+  in `on_enable`, `jb_stop(5000)` in `on_disable`. Logs are polled every server tick by a
+  scheduler task (`jb_poll_log`); the library never calls into Python.
+* A Go runtime cannot be unloaded: the library stays loaded across `/reload`; `jb_start` and
+  `jb_stop` can alternate any number of times. A wheel replaced while the server runs takes
+  effect after a restart.
+* Go inside BDS was tested (docs/STATUS.md, Spike): async preemption, GC, panics, SIGSEGV in Go
+  code (becomes a recoverable panic), EPIPE, reloads and shutdown all behave; BDS's crash
+  handler (crashpad) never saw a Go fault.
+
+## Panic policy
+
+No panic may take BDS down. Every goroutine the core starts goes through `host.Go`,
+`bridge.goSafe`, `(*Player).goSafe` or `(*Player).after` (timers), which recover and log.
+Every Java packet, Bedrock packet and tick runs through `(*Player).locked`, which releases the
+player's lock, logs the panic and disconnects only that player. The two third-party goroutines
+that handle untrusted input (the Java login in `third_party/dragonfly/.../server.go` and
+gophertunnel's client read loop in `dial.go`) were patched to recover too.
+
+## Threading in the translator
+
+From the original bridge (unchanged): everything a `Player` keeps is guarded by `p.mu`; every
+Bedrock packet handler, Java packet handler and tick hook runs with it held, in order, so
+handlers need no locks of their own but must not block (writes to either side are queued).
+Goroutines per player: the Java reader, the Java writer, the run loop (Java packets, 20 Hz tick,
+keep-alive), the Bedrock read loop, and short-lived helpers (dial, skin lookups, timers).
+
+Handlers register from `init()` in each area's file:
+
+```go
+OnBedrock(packet.IDAddActor, (*Player).handleAddActor)
+OnJava(v777.ServerboundPlayInteract, func(p *Player, r *wireReader) error { ... })
+OnTick(func(p *Player) { ... })
+OnReset(func(p *Player, newConn bool) { ... })
+LocalCommand("jb", ...) // the bridge's own command, never sent to the server
+```
+
+## Lifecycle of a player
+
+1. Java login/configuration (`third_party/dragonfly/server/java/protocol/server`): status,
+   offline or online-mode login, registries/tags, known packs, then the play state.
+2. `bridge.serve`: the identity provider makes the Bedrock login (`identity.go`), the bridge
+   dials the server's own port (`remote.go`), waits for StartGame and spawn, then sends the
+   Java login (`self.go`). A dial slower than 8 s shows a waiting area meanwhile.
+3. Java leaves -> the Bedrock connection is closed (BDS logs the player leaving).
+   Server ends the connection (kick, stop) -> the Java player is disconnected with the
+   server's reason (`leave.go` turns lang keys into text).
+4. `jb_stop` -> listener closed, every player disconnected ("The server is restarting."), wait
+   for every player goroutine (5 s budget).
+
+## Identity
+
+`bridge.IdentityProvider` (`core/bridge/identity.go`) is the one place where a Java player's
+Bedrock identity is made: `BedrockLogin(ctx, JavaPlayer) (*BedrockLogin, error)` returns either
+an Xbox token source (online login) or offline `IdentityData` (name, UUID, XUID), plus optional
+client data (device info, skin). The default `OfflineIdentity` logs in as the Java name with a
+UUID derived from the Java UUID (servers with `online-mode=false`). Agent B replaces it.
+The Windows-client device data and the Java skin -> Bedrock skin conversion are in
+`clientdata.go`/`skin.go` and are used when the provider leaves `ClientData` nil.
+
+## Data on disk
+
+`data_dir` (the plugin's data folder): `devices/<name>.json` (stable device ids per player),
+`skins/` (Mojang texture cache), `packs/` (when packs are on), `native/` (the loaded library).
+
+## Transport to BDS
+
+The loopback connection is RakNet (gophertunnel's client). A BDS with `transport=nethernet`
+cannot be reached this way: NetherNet BDS requires an Xbox-signed identity on every connection.
+That is an open problem (STATUS.md); the main target, a normal public Endstone server, listens
+on RakNet.

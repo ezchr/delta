@@ -122,4 +122,9 @@ class JavaBridgePlugin(Plugin):
         if self._native is None:
             return
         for level, msg in self._native.poll_log():
+            if level == "DEBUG":
+                # Endstone's plugin loggers drop debug records by default: the core's debug
+                # lines only come when debug is on in the core, so show them as info.
+                self.logger.info("[debug] " + msg)
+                continue
             getattr(self.logger, _LEVELS.get(level, "info"))(msg)

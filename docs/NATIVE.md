@@ -35,7 +35,10 @@ JSON object, unknown keys ignored (`core/service/service.go`, `Config`):
 | Method | Params | Result |
 |---|---|---|
 | `debug` | bool | Turns debug lines on/off (works while stopped). |
-| `players` | - | Bridge mode: the connected Java players. |
+| `players` | - | Bridge mode: the connected Java players (`name`, `uuid`, `protocol`, `address`, `connected`). |
+| `status` | - | Bridge mode: `online`, `listen`. |
+| `goroutines` | - | Goroutine count (works while stopped: leak check; 3 when idle). |
+| `stacks` | - | All goroutine stacks (debugging). |
 | `stress` | seconds | Spike mode: preemption/GC/panic/SIGSEGV/EPIPE self-test. |
 | `goroutines` | - | Spike mode: goroutine count. |
 
