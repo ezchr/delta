@@ -92,6 +92,16 @@ func corner(lo, hi [3]float64, c int) [3]float64 {
 // keeps its part if the budget allows, built as it is in the first sampled pose that shows it;
 // merged into a parent it is left out, as the reference pose has it.
 func MakePlan(rig *Rig, boxes []Box, maxParts int) *Plan {
+	return MakePlans(rig, boxes, []int{maxParts})[0]
+}
+
+// AllParts as a budget means no budget: every bone that moves keeps its part.
+const AllParts = 1 << 30
+
+// MakePlans is MakePlan for several budgets at once, largest first: the merging is one sequence,
+// so the plan for a smaller budget is the plan for a larger one merged further (each of its
+// parts is a union of the larger plan's parts).
+func MakePlans(rig *Rig, boxes []Box, budgets []int) []*Plan {
 	nb := len(rig.Bones)
 	// Sample poses.
 	var poses [][]Xform
@@ -323,7 +333,38 @@ func MakePlan(rig *Rig, boxes []Box, maxParts int) *Plan {
 			groups[parent].cost = cost(parent) // its cubes reach further now
 		}
 	}
-	for {
+	snapshot := func() *Plan {
+		out := &Plan{Ref: plan.Ref, Moving: plan.Moving, Extras: plan.Extras}
+		for i := 0; i <= nb; i++ {
+			g := &groups[i]
+			if !g.alive || len(g.members) == 0 {
+				continue
+			}
+			pp := PartPlan{Bone: i}
+			if i == nb {
+				pp.Bone = -1
+			}
+			k := max(0, shown[i])
+			members := append([]int(nil), g.members...)
+			sort.Ints(members)
+			for _, m := range members {
+				r, ok := rel(k, i, m)
+				if m == i {
+					r, ok = IdentX, true // its own cubes are in its own frame whatever its scale
+				}
+				if ok && r.Uniform() > tiny {
+					pp.Members = append(pp.Members, m)
+					pp.Rel = append(pp.Rel, r)
+				}
+			}
+			if len(pp.Members) > 0 {
+				out.Parts = append(out.Parts, pp)
+			}
+		}
+		return out
+	}
+	var plans []*Plan
+	for len(plans) < len(budgets) {
 		best, bc, braw := -1, 0.0, 0.0
 		for i := 0; i < nb; i++ {
 			if !groups[i].alive {
@@ -333,8 +374,14 @@ func MakePlan(rig *Rig, boxes []Box, maxParts int) *Plan {
 				best, bc, braw = i, c, raw
 			}
 		}
-		if best < 0 || (braw > mergeFree && count <= maxParts) {
-			break
+		if best < 0 || (braw > mergeFree && count <= budgets[len(plans)]) {
+			plans = append(plans, snapshot())
+			if best < 0 {
+				for len(plans) < len(budgets) {
+					plans = append(plans, plans[len(plans)-1])
+				}
+			}
+			continue
 		}
 		t, both := twin[best], paired(best)
 		merge(best)
@@ -342,32 +389,7 @@ func MakePlan(rig *Rig, boxes []Box, maxParts int) *Plan {
 			merge(t)
 		}
 	}
-	for i := 0; i <= nb; i++ {
-		g := &groups[i]
-		if !g.alive || len(g.members) == 0 {
-			continue
-		}
-		pp := PartPlan{Bone: i}
-		if i == nb {
-			pp.Bone = -1
-		}
-		k := max(0, shown[i])
-		sort.Ints(g.members)
-		for _, m := range g.members {
-			r, ok := rel(k, i, m)
-			if m == i {
-				r, ok = IdentX, true // its own cubes are in its own frame whatever its scale
-			}
-			if ok && r.Uniform() > tiny {
-				pp.Members = append(pp.Members, m)
-				pp.Rel = append(pp.Rel, r)
-			}
-		}
-		if len(pp.Members) > 0 {
-			plan.Parts = append(plan.Parts, pp)
-		}
-	}
-	return plan
+	return plans
 }
 
 // twinName is the name of a bone's mirror twin by the usual naming (left/right, _l/_r), or the

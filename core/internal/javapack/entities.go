@@ -47,6 +47,7 @@ type entityOut struct {
 	ent   Entity
 	parts []map[string]any
 	plan  []anim.Part // Model filled in when the files are written
+	full  int         // the last full parts of plan and parts are the full-detail set
 	src   *anim.Source
 	notes []string
 	err   string
@@ -146,7 +147,7 @@ func (b *builder) entities() {
 		go func() {
 			defer wg.Done()
 			for o := range next {
-				buildEntity(o, lib, maxParts)
+				buildEntity(o, lib, maxParts, b.in.FullParts)
 			}
 		}()
 	}
@@ -189,10 +190,14 @@ func (b *builder) entities() {
 					"type": "minecraft:range_dispatch", "property": "minecraft:custom_model_data", "index": 0, "entries": entries,
 				}})
 			}
-			e.Anim = anim.NewModel(o.plan, o.src, lib)
+			e.Anim = anim.NewModel(o.plan[:len(o.plan)-o.full], o.src, lib)
+			if o.full > 0 {
+				e.Anim.Full = o.plan[len(o.plan)-o.full:]
+				b.res.Stats.FullParts += o.full
+			}
 			if e.Anim.Moves() {
 				b.res.Stats.Animated++
-				b.res.Stats.Parts += len(o.plan)
+				b.res.Stats.Parts += len(o.plan) - o.full
 			}
 		}
 		b.res.Entities[id] = e
@@ -206,7 +211,7 @@ func (b *builder) entities() {
 
 // buildEntity makes one entity's models. A panic (a pack shaped in a way nothing here expects)
 // costs only this entity.
-func buildEntity(o *entityOut, lib *anim.Library, maxParts int) {
+func buildEntity(o *entityOut, lib *anim.Library, maxParts int, full bool) {
 	defer func() {
 		if r := recover(); r != nil {
 			o.err = fmt.Sprintf("panic: %v", r)
@@ -217,7 +222,7 @@ func buildEntity(o *entityOut, lib *anim.Library, maxParts int) {
 	if tw <= 0 || th <= 0 {
 		tw, th = float64(o.tex.size.X), float64(o.tex.size.Y)
 	}
-	var plan *anim.Plan
+	var plan, fullPlan *anim.Plan
 	var rigBones int
 	if lib != nil && (len(d.scripts.Animate) > 0 || len(d.scripts.Scale) > 0) && len(g.bones) <= maxEntityAnimBones {
 		src := &anim.Source{Animations: d.animations, Animate: d.scripts.Animate, Initialize: d.scripts.Initialize,
@@ -251,7 +256,15 @@ func buildEntity(o *entityOut, lib *anim.Library, maxParts int) {
 		}
 		rig := anim.Compile(src, lib, nil)
 		rigBones = len(rig.Bones)
-		plan = anim.MakePlan(rig, boxes, maxParts)
+		if full && maxParts < anim.AllParts {
+			plans := anim.MakePlans(rig, boxes, []int{anim.AllParts, maxParts})
+			plan, fullPlan = plans[1], plans[0]
+			if len(fullPlan.Parts) <= len(plan.Parts) {
+				fullPlan = nil // nothing was merged for the budget
+			}
+		} else {
+			plan = anim.MakePlan(rig, boxes, maxParts)
+		}
 		o.src, o.notes = src, rig.Notes
 	}
 
@@ -286,10 +299,25 @@ func buildEntity(o *entityOut, lib *anim.Library, maxParts int) {
 	moves := false
 	defer func() {
 		if !moves { // nothing an animation moves: the whole model does
-			o.parts, o.plan = nil, nil
+			o.parts, o.plan, o.full = nil, nil, 0
 		}
 	}()
-	for _, pp := range plan.Parts {
+	sets := [][]anim.PartPlan{plan.Parts}
+	if fullPlan != nil {
+		sets = append(sets, fullPlan.Parts)
+	}
+	for si, set := range sets {
+		before := len(o.plan)
+		partModels(o, g, set, tw, th, &moves)
+		if si == 1 {
+			o.full = len(o.plan) - before
+		}
+	}
+}
+
+// partModels makes the models of a set of parts.
+func partModels(o *entityOut, g *geometry, set []anim.PartPlan, tw, th float64, moves *bool) {
+	for _, pp := range set {
 		var piv [3]float64
 		if pp.Bone >= 0 {
 			piv = [3]float64{-g.bones[pp.Bone].Pivot[0], g.bones[pp.Bone].Pivot[1], g.bones[pp.Bone].Pivot[2]}
@@ -327,7 +355,7 @@ func buildEntity(o *entityOut, lib *anim.Library, maxParts int) {
 			continue
 		}
 		o.parts = append(o.parts, modelJSON(pels, o.tex.id, tw, th))
-		moves = moves || pp.Bone >= 0
+		*moves = *moves || pp.Bone >= 0
 		o.plan = append(o.plan, anim.Part{Bone: pp.Bone, K: pk})
 	}
 }

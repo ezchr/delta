@@ -268,10 +268,10 @@ func (p *Player) javaPackFor(conn *minecraft.Conn, gd minecraft.GameData, pal *b
 	}
 	sort.SliceStable(packs, func(i, j int) bool { return rank[packs[i].UUID().String()] < rank[packs[j].UUID().String()] })
 
-	in := &javapack.Input{}
+	in := &javapack.Input{MaxParts: animParts, FullParts: animFullMobs > 0}
 	var names []string
 	key := sha1.New()
-	fmt.Fprintf(key, "v%d|", javapack.Version)
+	fmt.Fprintf(key, "v%d|p%d,%v|", javapack.Version, in.MaxParts, in.FullParts)
 	for _, pk := range packs {
 		fmt.Fprintf(key, "%s_%s_%d|", pk.UUID(), pk.Version(), pk.Len())
 		names = append(names, pk.Name())
@@ -339,7 +339,7 @@ func (p *Player) javaPackFor(conn *minecraft.Conn, gd minecraft.GameData, pal *b
 		}
 		st := res.Stats
 		p.log.Info("converted resource packs", "packs", strings.Join(names, ", "), "sha1", res.SHA1, "bytes", len(res.Zip),
-			"overrides", st.Overrides, "items", st.Items, "armour", st.Equipment, "held3d", st.Held, "blocks", st.Blocks, "entities", st.Entities, "standins", st.StandIns, "animated", st.Animated, "parts", st.Parts, "lang", st.LangKeys,
+			"overrides", st.Overrides, "items", st.Items, "armour", st.Equipment, "held3d", st.Held, "blocks", st.Blocks, "entities", st.Entities, "standins", st.StandIns, "animated", st.Animated, "parts", st.Parts, "full_parts", st.FullParts, "lang", st.LangKeys,
 			"took", b.took.Round(time.Millisecond))
 		for _, m := range st.Missing {
 			p.log.Info("resource pack conversion: not converted", "what", m)
@@ -514,6 +514,7 @@ type packState struct {
 	// the next tick (entities_anim.go).
 	animTicks   uint64
 	animRankNow bool
+	animBundles int // open packet bundles (animBundle)
 }
 
 // Java resource_pack statuses.

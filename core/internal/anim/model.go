@@ -4,7 +4,7 @@ import "sync"
 
 // MaxParts is the most displays one mob is drawn with. A model with more moving bones than this
 // has the ones that move least merged into their parents.
-const MaxParts = 32
+const MaxParts = 24
 
 // Part is one display of an animated model.
 type Part struct {
@@ -18,6 +18,10 @@ type Part struct {
 // asked for.
 type Model struct {
 	Parts []Part
+	// Full is the model in full detail, a part for every bone that moves, when Parts is a
+	// merged set and the conversion was asked for both (nil otherwise). Shown for the mobs
+	// nearest to the player.
+	Full []Part
 
 	src  *Source
 	lib  *Library
@@ -33,8 +37,8 @@ func NewModel(parts []Part, src *Source, lib *Library) *Model {
 // Rig is the model's rig, compiled for the bones its parts move with.
 func (m *Model) Rig() *Rig {
 	m.once.Do(func() {
-		need := make([]int, 0, len(m.Parts))
-		for _, p := range m.Parts {
+		need := make([]int, 0, len(m.Parts)+len(m.Full))
+		for _, p := range append(append([]Part(nil), m.Parts...), m.Full...) {
 			if p.Bone >= 0 {
 				need = append(need, p.Bone)
 			}

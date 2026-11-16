@@ -12,9 +12,12 @@ import (
 	"log/slog"
 	"os"
 	"runtime/debug"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
+
+	"delta/core/internal/anim"
 
 	jserver "github.com/ezchr/go-mcjava/server"
 	v776 "github.com/ezchr/go-mcjava/v776"
@@ -85,6 +88,21 @@ func Run(c Config, l *jserver.Listener) {
 	debugPackets = option("debug_packets", "") != ""
 	debugAnim = option("debug_anim", "") != ""
 	animOff = option("animations", "on") == "off"
+	animParts, animFullMobs = anim.MaxParts, 0
+	switch v := strings.ToLower(strings.TrimSpace(option("anim_parts", ""))); v {
+	case "":
+	case "all":
+		animParts = anim.AllParts
+	default:
+		if n, err := strconv.Atoi(v); err == nil && n >= 1 {
+			animParts = n
+		} else {
+			cfg.Log.Warn("anim_parts is a number or \"all\"", "value", v)
+		}
+	}
+	if n, err := strconv.Atoi(strings.TrimSpace(option("anim_full_mobs", "0"))); err == nil && n >= 0 {
+		animFullMobs = n
+	}
 	captureDir = option("capture_dir", "")
 	running.mu.Lock()
 	running.l = l

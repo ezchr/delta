@@ -66,13 +66,16 @@ const step = 0.05
 var (
 	playing string
 	propsOn bool
+	fullSet bool // draw the full-detail part set
 )
 
 func main() {
 	var packs list
 	flag.Var(&packs, "pack", "an unpacked Bedrock resource pack (repeatable, bottom of the stack first)")
 	out := flag.String("out", ".", "directory for the sheets")
-	parts := flag.Int("parts", 0, "displays per mob (0: the bridge's budget)")
+	parts := flag.Int("parts", 0, "displays per mob (0: the bridge's default budget)")
+	all := flag.Bool("all", false, "a display for every bone that moves (anim_parts = all)")
+	flag.BoolVar(&fullSet, "full", false, "also make the full-detail set (anim_full_mobs > 0) and draw it instead of the merged one")
 	cell := flag.Int("size", 300, "cell size in pixels")
 	zipOut := flag.String("zip", "", "also write the converted Java pack here")
 	prof := flag.String("cpuprofile", "", "write a CPU profile of the conversion here")
@@ -81,7 +84,10 @@ func main() {
 		flag.Usage()
 		os.Exit(2)
 	}
-	in := &javapack.Input{MaxParts: *parts}
+	in := &javapack.Input{MaxParts: *parts, FullParts: fullSet}
+	if *all {
+		in.MaxParts = anim.AllParts
+	}
 	for _, p := range packs {
 		s, err := javapack.ReadDir(p)
 		if err != nil {
@@ -105,8 +111,8 @@ func main() {
 		fail(err)
 	}
 	st := res.Stats
-	fmt.Printf("converted in %v (entities %v): %d entities, %d animated with %d part models, %d bytes of animations kept, zip %d bytes\n",
-		time.Since(start).Round(time.Millisecond), st.EntitiesTook.Round(time.Millisecond), st.Entities, st.Animated, st.Parts, st.AnimBytes, len(res.Zip))
+	fmt.Printf("converted in %v (entities %v): %d entities, %d animated with %d part models + %d full, %d bytes of animations kept, zip %d bytes\n",
+		time.Since(start).Round(time.Millisecond), st.EntitiesTook.Round(time.Millisecond), st.Entities, st.Animated, st.Parts, st.FullParts, st.AnimBytes, len(res.Zip))
 	for _, m := range st.Missing {
 		fmt.Println("  not converted:", m)
 	}
@@ -366,7 +372,11 @@ func sheet(packs []*javapack.Source, z zipFS, res *javapack.Result, id, preset s
 	}
 	full := e.Anim.FullRig()
 	rig := e.Anim.Rig()
-	fmt.Printf("%s: %d bones, %d parts, static model scale %.3f\n", id, len(full.Bones), len(e.Anim.Parts), e.Scale)
+	set := e.Anim.Parts
+	if fullSet && e.Anim.Full != nil {
+		set = e.Anim.Full
+	}
+	fmt.Printf("%s: %d bones, %d parts (merged %d, full %d), static model scale %.3f\n", id, len(full.Bones), len(set), len(e.Anim.Parts), len(e.Anim.Full), e.Scale)
 	for _, n := range rig.Notes {
 		fmt.Println("  note:", n)
 	}
@@ -375,7 +385,7 @@ func sheet(packs []*javapack.Source, z zipFS, res *javapack.Result, id, preset s
 		qs []render.Quad
 	}
 	var pq []partQuads
-	for _, p := range e.Anim.Parts {
+	for _, p := range set {
 		m, err := render.LoadJavaModel(z.partModel(p), z.model)
 		if err != nil {
 			fail(err)

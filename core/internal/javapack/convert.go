@@ -19,7 +19,7 @@ import (
 )
 
 // Version changes when the converter's output changes (part of the conversion cache key).
-const Version = 3
+const Version = 4
 
 // Java 26.3's resource pack format (version.json pack_version.resource_major/minor); 26.2 clients
 // (88) are in the range too.
@@ -42,8 +42,12 @@ type Input struct {
 	// Slots are the free Java block states custom blocks may be drawn on, in order of preference
 	// (see Candidates).
 	Slots []Slot
-	// MaxParts is the most displays an animated entity is split into (0: anim.MaxParts).
+	// MaxParts is the most displays an animated entity is split into (0: anim.MaxParts;
+	// anim.AllParts: a part for every bone that moves).
 	MaxParts int
+	// FullParts also makes the full-detail part set (a part for every bone that moves) of the
+	// entities MaxParts merges: Entity.Anim.Full.
+	FullParts bool
 	// Description is the pack's description line.
 	Description string
 }
@@ -97,6 +101,7 @@ type Stats struct {
 	Packs, Overrides, Items, Blocks, Entities, LangKeys int
 	Equipment, Held                                     int // armour pieces with a layer, 3D held models
 	Animated, Parts                                     int // entities with animated parts, and their part models
+	FullParts                                           int // part models of the full-detail sets
 	StandIns                                            int // entities shown as a Java entity of their vanilla shape
 	AnimBytes                                           int // animation files kept (compressed) for rigs compiled later
 	EntitiesTook                                        time.Duration

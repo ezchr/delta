@@ -58,6 +58,19 @@ const (
 // animNear and animFar are the animation slots per player (variables for tests).
 var animNear, animFar = 6, 10
 
+// animParts is the part budget of a mob ([core.options] anim_parts: a number, or "all" =
+// anim.AllParts: a part for every bone that moves). animFullMobs ([core.options]
+// anim_full_mobs) is how many of the nearest animated mobs are shown in full detail when
+// animParts is a number: the others get the set merged to animParts. A mob that is shown in
+// full detail keeps it until it is animFullKeep places beyond that count, so two mobs at the
+// same distance do not keep swapping.
+var (
+	animParts    = anim.MaxParts
+	animFullMobs = 0
+)
+
+const animFullKeep = 2
+
 // Display entity data indices (26.3) beyond those in entities_custom.go.
 const (
 	displayInterpDelay    = 8  // int: ticks until the interpolation starts (sending it restarts it)
@@ -105,6 +118,9 @@ type modelAnim struct {
 	model *anim.Model
 	st    *anim.State
 	parts []animPart // nil: shown as the one static model
+	// set is the part set the displays show (the model's Parts or Full), full which.
+	set  []anim.Part
+	full bool
 	// period is the ticks between steps while animated.
 	period   int
 	lastStep uint64
@@ -327,11 +343,12 @@ func (p *Player) animRank() {
 	})
 	for i, c := range cands {
 		a := c.me.anim
+		full := a.model.Full != nil && (i < animFullMobs || (a.full && a.parts != nil && i < animFullMobs+animFullKeep))
 		switch {
 		case i < animNear:
-			p.animStart(c.e, c.me, animNearTicks)
+			p.animStart(c.e, c.me, animNearTicks, full)
 		case i < animNear+animFar:
-			p.animStart(c.e, c.me, animFarTicks)
+			p.animStart(c.e, c.me, animFarTicks, full)
 		default:
 			if a.parts != nil {
 				p.animStop(c.e, c.me)
@@ -356,11 +373,22 @@ func (p *Player) animStill(e *entity, me *modelEntity) {
 }
 
 // animStart makes a mob animated (if it is not) with a step every period ticks.
-func (p *Player) animStart(e *entity, me *modelEntity, period int) {
+func (p *Player) animStart(e *entity, me *modelEntity, period int, full bool) {
 	a := me.anim
 	typ := p.ver().BuiltinID("minecraft:entity_type", "minecraft:item_display")
 	if typ < 0 {
 		return
+	}
+	set := a.model.Parts
+	if full = full && a.model.Full != nil; full {
+		set = a.model.Full
+	}
+	if a.parts != nil && a.full != full {
+		// The other part set: the old displays go and the new ones come in one bundle, so the
+		// client never draws both or neither.
+		p.animBundle(true)
+		defer p.animBundle(false)
+		p.animStop(e, me)
 	}
 	if a.parts != nil {
 		if a.period != period {
@@ -382,10 +410,11 @@ func (p *Player) animStart(e *entity, me *modelEntity, period int) {
 	a.lastStep, a.period = now, period
 	me.script = float32(a.st.Scale())
 	scale := me.scale * me.script
-	a.parts = make([]animPart, len(a.model.Parts))
+	a.set, a.full = set, full
+	a.parts = make([]animPart, len(set))
 	a.sentYaw = angleByte(e.yaw)
-	p.send(v777.ClientboundPlayBundleDelimiter, p.pk())
-	for i, mp := range a.model.Parts {
+	p.animBundle(true)
+	for i, mp := range set {
 		pt := &a.parts[i]
 		pt.id = p.ents.next
 		p.ents.next++
@@ -426,9 +455,9 @@ func (p *Player) animStart(e *entity, me *modelEntity, period int) {
 	}
 	p.sendPassengers(e)
 	p.sendModelData(e, me, true) // the mob's own display now shows nothing
-	p.send(v777.ClientboundPlayBundleDelimiter, p.pk())
+	p.animBundle(false)
 	if debugAnim {
-		p.log.Info("anim start", "type", e.bedrock, "id", e.id, "parts", len(a.parts), "period", period, "distance", math.Round(a.distance))
+		p.log.Info("anim start", "type", e.bedrock, "id", e.id, "parts", len(a.parts), "full", full, "period", period, "distance", math.Round(a.distance))
 	}
 }
 
@@ -438,7 +467,7 @@ func (p *Player) animStop(e *entity, me *modelEntity) {
 	if a == nil || a.parts == nil {
 		return
 	}
-	p.send(v777.ClientboundPlayBundleDelimiter, p.pk())
+	p.animBundle(true)
 	w := p.pk()
 	w.VarInt(int32(len(a.parts)))
 	for _, pt := range a.parts {
@@ -449,7 +478,7 @@ func (p *Player) animStop(e *entity, me *modelEntity) {
 	if e.spawned {
 		p.sendModelData(e, me, true)
 	}
-	p.send(v777.ClientboundPlayBundleDelimiter, p.pk())
+	p.animBundle(false)
 	if debugAnim {
 		p.log.Info("anim stop", "type", e.bedrock, "id", e.id)
 	}
@@ -478,7 +507,7 @@ func (p *Player) animStep(e *entity, me *modelEntity, dt float64) {
 	turned := yaw != a.sentYaw
 	a.sentYaw = yaw
 	bundled := false
-	for i, mp := range a.model.Parts {
+	for i, mp := range a.set {
 		pt := &a.parts[i]
 		pose := scaledPose(a.st.Pose(mp.Bone, mp.K), scale)
 		moved := !pt.hasSent || !pose.Near(pt.sent)
@@ -689,4 +718,23 @@ func (p *Player) clearLine(from, to mgl64.Vec3) bool {
 		}
 	}
 	return true
+}
+
+// animBundle opens or closes a packet bundle (the client applies a bundle's packets in one
+// frame). Bundles do not nest on the wire: an inner one is part of the outer. A bundle holds at
+// most 4096 packets; the largest sent here is a part set swap (two packets per new part, three
+// more for the rest).
+func (p *Player) animBundle(open bool) {
+	ps := &p.packs
+	if open {
+		if ps.animBundles == 0 {
+			p.send(v777.ClientboundPlayBundleDelimiter, p.pk())
+		}
+		ps.animBundles++
+		return
+	}
+	ps.animBundles--
+	if ps.animBundles == 0 {
+		p.send(v777.ClientboundPlayBundleDelimiter, p.pk())
+	}
 }
