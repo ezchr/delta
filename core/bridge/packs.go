@@ -325,6 +325,10 @@ func (p *Player) javaPackFor(conn *minecraft.Conn, gd minecraft.GameData, pal *b
 			p.log.Warn("resource pack conversion failed", "err", err)
 			return nil
 		}
+		res.HudMarkers = javapack.HudMarkersOf(in.Packs)
+		if len(res.HudMarkers) > 0 {
+			p.log.Info("titles that are data for the pack's own HUD are not shown", "markers", strings.Join(res.HudMarkers, ", "))
+		}
 		b = &packBuild{res: res, sha: res.SHA1, id: uuid.NewSHA1(uuid.NameSpaceURL, []byte(ProductName+"-pack:"+res.SHA1)),
 			slots: in.Slots, state: state, took: time.Since(start)}
 		if !res.Empty() {
@@ -354,6 +358,7 @@ func (p *Player) javaPackFor(conn *minecraft.Conn, gd minecraft.GameData, pal *b
 		buildMu.Unlock()
 		go prunePacks(p.log)
 	}
+	p.hudMarkers = b.res.HudMarkers
 	if b.res.Empty() {
 		return nil
 	}

@@ -136,6 +136,13 @@ func translate(msg string, params []string) string {
 			params[i] = v
 		}
 	}
+	if strings.HasPrefix(strings.TrimPrefix(msg, "%"), "death.") {
+		// A killer's name tag may have several lines (add-ons put hints under the name); a death
+		// message is one line.
+		for i := range params {
+			params[i] = strings.Join(strings.Fields(strings.ReplaceAll(params[i], "\n", " ")), " ")
+		}
+	}
 	if v, ok := lang[strings.TrimPrefix(msg, "%")]; ok {
 		msg = v
 	} else {

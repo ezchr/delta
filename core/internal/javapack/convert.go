@@ -76,6 +76,9 @@ type Result struct {
 	Blocks     map[string]int    // custom block name -> index in Input.Slots
 	Entities   map[string]Entity // custom entity identifier -> model
 	Lang       map[string]string
+	// HudMarkers are the texts a pack's own HUD (ui/*.json) looks for in the title, subtitle or
+	// action bar: a title holding one is data for that HUD, not text for the player.
+	HudMarkers []string
 
 	Stats Stats
 }
@@ -529,4 +532,29 @@ func (b *builder) readBlocksJSON(s *Source) {
 			b.blocksTex[name] = faces
 		}
 	}
+}
+
+// hudMarker finds the texts a JSON UI file takes out of the HUD's title strings, the way packs test
+// "does the title hold my marker": (#hud_title_text_string - 'cbm:party').
+var hudMarker = regexp.MustCompile(`#hud_(?:title|subtitle|actionbar)_text_string\s*-\s*'([^']{3,64})'`)
+
+// HudMarkersOf lists the HUD markers of the packs' ui files, sorted.
+func HudMarkersOf(packs []*Source) []string {
+	seen := map[string]bool{}
+	for _, s := range packs {
+		for name, b := range s.files {
+			if !strings.HasPrefix(name, "ui/") || !strings.HasSuffix(name, ".json") {
+				continue
+			}
+			for _, m := range hudMarker.FindAllSubmatch(b, -1) {
+				seen[string(m[1])] = true
+			}
+		}
+	}
+	out := make([]string, 0, len(seen))
+	for m := range seen {
+		out = append(out, m)
+	}
+	sort.Strings(out)
+	return out
 }

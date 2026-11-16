@@ -25,6 +25,10 @@ import (
 // handlers never need locks of their own. Handlers must not block (writes to either side are
 // queued); anything slow (dialing, HTTP) runs on its own goroutine and takes mu when done.
 type Player struct {
+	// hudMarkers are the current server pack's HUD markers (javapack.Result.HudMarkers): titles
+	// holding one are not shown. Set when the server is dialled.
+	hudMarkers []string
+
 	log     *slog.Logger
 	java    *JavaConn
 	jp      *jserver.Player

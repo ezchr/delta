@@ -110,6 +110,13 @@ func (p *Player) bedrockTitle(pk *packet.SetTitle) {
 	case packet.TitleActionTitleTextObject, packet.TitleActionSubtitleTextObject, packet.TitleActionActionbarTextObject:
 		t = rawText(t)
 	}
+	// A Bedrock pack with its own HUD gets its data in titles that hold its marker and never
+	// shows them: on Java they would flash on screen as text.
+	for _, m := range p.hudMarkers {
+		if t != "" && strings.Contains(t, m) {
+			return
+		}
+	}
 	switch pk.ActionType {
 	case packet.TitleActionClear:
 		p.sendClearTitles(false)
