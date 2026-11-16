@@ -57,6 +57,7 @@ type movement struct {
 	flyChange                                          int       // 1 started flying, -1 stopped
 	flyRequested                                       time.Time // when the client last asked to fly (RequestAbility)
 	swungAtAir                                         bool
+	swingDidSomething                                  bool // a dig, use or hit since the last input (swingair.go)
 
 	// shiftKey is the shift key of the last input sent: the Java client crouches by the key of
 	// the tick before, the sprint ends then (sendInput).
@@ -582,10 +583,10 @@ func (p *Player) sendInput() {
 	if m.hCollision {
 		flags.Set(packet.InputFlagHorizontalCollision)
 	}
-	if m.swungAtAir {
+	if m.swungAtAir && !m.swingDidSomething {
 		flags.Set(packet.InputFlagMissedSwing)
-		m.swungAtAir = false
 	}
+	m.swungAtAir, m.swingDidSomething = false, false
 	flags.Set(packet.InputFlagBlockBreakingDelayEnabled)
 	// BDS only flies the player after a RequestAbility (as a Bedrock client sends it); the
 	// StartFlying/StopFlying input flags alone are ignored and it simulates a fall.

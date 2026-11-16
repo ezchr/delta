@@ -486,7 +486,11 @@ func (p *Player) levelSound(pk *packet.LevelSoundEvent) {
 		return
 	case "attack.strong", "attack.nodamage":
 		if self {
+			hitSomething := p.sounds().attack.rid != 0
 			p.sounds().attack.rid = 0 // the server said it: do not make it up
+			if ev == "attack.nodamage" && !hitSomething {
+				return // the player's own swing at the air: silent on Java
+			}
 		}
 	}
 	if strings.HasPrefix(ev, "record.") {
