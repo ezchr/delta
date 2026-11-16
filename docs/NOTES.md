@@ -200,7 +200,7 @@ tail's end is a little off. Raising `anim.MaxParts` trades that against packets 
   And `math.random(0, N) < 1` per frame (Cobblemon's blinks and idle quirks) fires 3 to 9 times
   less often, because the bridge steps a mob 7 or 3 times a second, not 60.
 - A one-shot on a mob that has no animation slot (too far, not in sight) is not shown.
-- Live: `/root/jbtest/oneshotlive.sh` plays `animation.charizard.cry` with `/playanimation`:
+- Live: `oneshotlive.sh` plays `animation.charizard.cry` with `/playanimation`:
   `anim play ... found=true`, the state line shows `+ animation.charizard.cry` for its length;
   an animation of another mob is compiled and played; an unknown one is `found=false`.
 
@@ -226,14 +226,14 @@ to the entity's location per tick with no hysteresis; ours is cheaper per second
 flicker at an edge. Not covered: the player's view direction (a mob behind the player keeps
 its slot: turning round would otherwise show a static mob for up to a second).
 Tests: `TestAnimSight` (wall, glass, a hole, a tall mob, a mob at the wall's end, one slot);
-live `/root/jbtest/sightlive.sh`: a Charizard behind a stone wall stayed static while a Pikachu
+live `sightlive.sh`: a Charizard behind a stone wall stayed static while a Pikachu
 in the open animated, was animated a second after the wall was removed and static again three
 seconds after it came back.
 
 **Detail on big mobs (branch `anim-detail`).** At 24 parts Charizard (81 moving bones) lost
 fingers, jaw, claws and a joint each of neck, tail and feet. Measured with `animpreview`
 (share of pixels that differ from the posed Bedrock geometry, worst sampled time per situation;
-`/root/jbtest/measure.sh`), the Cobblemon pack converted alone:
+`measure.sh`), the Cobblemon pack converted alone:
 
 | Parts per mob | Charizard idle | walk | fly | attack | asleep | Gyarados swim | Part models | Pack |
 |---|---|---|---|---|---|---|---|---|
@@ -275,7 +275,7 @@ Built on the branch: one item definition per entity; the budget as a setting
 (`[core.options] anim_parts`: a number, default 24, or `"all"`); and a full-detail set for the
 nearest mobs (`anim_full_mobs`, with `anim_parts` a number). 32 for everyone was dropped.
 
-**Every moving bone (`anim_parts = "all"`), measured.** Conversion (`/root/jbtest/measure2.sh`,
+**Every moving bone (`anim_parts = "all"`), measured.** Conversion (`measure2.sh`,
 `animpreview` with `/usr/bin/time`; "all packs" is the test world's six resource pack folders,
 without the items a server's registry adds):
 
@@ -374,7 +374,7 @@ mob of that type is first shown, for its parts' bones only.
 - Live: `[core.options] debug_anim = "1"` logs `anim start/stop` and what each controller plays
   (`anim ... playing="pose=walking blink=open"`). jbbot counts the updates of part displays
   instead of logging them (`-animlog` logs each): step `animstat` prints one `ANIM mob` line
-  per animated mob. `/root/jbtest/animlive.sh` (outside the repository) installs a wheel on the
+  per animated mob. `animlive.sh` (outside the repository) installs a wheel on the
   loopback server, summons mobs at the bot and prints both.
 - `[core.options] animations = "off"` shows every custom mob as its one static model.
 - Not tested: a real Java client. The bot checks packets, the pictures check the maths; nobody
@@ -418,7 +418,7 @@ mob of that type is first shown, for its parts' bones only.
 - Seen on the way: a player without a starter gets the `cbm:starter` form on every interaction,
   next to the NPC's own. A Bedrock client shows one form at a time and refuses the other; the
   bridge shows whichever came last on top. Not changed.
-- Test: `bridge.TestStandIns`, `javapack.TestVanillaShapes`; live `/root/jbtest/npclive.sh`
+- Test: `bridge.TestStandIns`, `javapack.TestVanillaShapes`; live `npclive.sh`
   (outside the repository): summons each of the four at the bot, `expectent villager|mannequin`,
   `use`, `form N`; the bot logs a mannequin's profile as `17=profile(skin="delta:entity/...")`.
   jbbot's NPC handler used to eat the dialog packet before the form handler read the form id
@@ -431,7 +431,7 @@ mob of that type is first shown, for its parts' bones only.
   are logged with `debug = true`: `bedrock login stages="handshake +36ms packs_info +49ms
   pack_stack +60ms start_game +3189ms item_registry +3201ms chunk_radius +3227ms" dialed=8.293s`
   (`minecraft.Conn.LoginStages`, added to the gophertunnel fork).
-- **A join that is not the first after a start** (loopback bdstest, Cobblemon world): the pack
+- **A join that is not the first after a start** (the loopback test server, Cobblemon world): the pack
   exchange is 25 ms (packs come from the server's folders, kept in memory), BDS takes about 3 s
   from there to StartGame (its own work: nothing to cut on our side), and then BDS says
   "spawn" only once it has sent the chunks of the radius the client asked for. gophertunnel
@@ -449,12 +449,12 @@ mob of that type is first shown, for its parts' bones only.
   plans) on disk under its cache key, or a warm-up login at start.
 - BDS refuses a login of a name whose earlier session ended less than a few seconds ago
   ("the server refused: no reason given"): leave 10 s between two test joins.
-- Test: `/root/jbtest/joinlive.sh` (outside the repository): two joins in a row, the stage lines.
+- Test: `joinlive.sh` (outside the repository): two joins in a row, the stage lines.
 
 ## A hit Pokemon that rises forever (not the bridge)
 
-- Seen on flat: a Gyarados hit once floated up and never stopped on the Java client. Reproduced
-  with the bot on bdstest (`/root/jbtest/hitlive.sh`): after the hit the display went from y 130
+- Seen on a test server: a Gyarados hit once floated up and never stopped on the Java client. Reproduced
+  with the bot on the loopback test server (`hitlive.sh`): after the hit the display went from y 130
   to 172 in 5 s and 220 in 11 s, about 7.8 blocks a second, and **the server has it there
   too**: `execute at @e[type=cobblemon:p0130_gyarados,c=1] run tp <player> ~ ~ ~` put the player
   at y 196.6 a few seconds later. The Java side shows what the server does.
@@ -468,7 +468,7 @@ mob of that type is first shown, for its parts' bones only.
   `remove_entities` with all of them), the mob's display and its hitbox when the server sends
   RemoveActor (15 s after the hit in the bot run, when it was 120 blocks up and out of the
   player's range). Whether the server then also despawns it, which would explain "No targets
-  matched" on flat, was not checked.
+  matched" on a test server, was not checked.
 
 ## Custom mobs: hurt flash, hit sound, name on aim
 
@@ -509,14 +509,14 @@ What a Java client does by itself for a living mob, and cannot for one drawn wit
   blocks away "stayed high up near the old spot"). On the wire the name display is a passenger
   of the hitbox, which is a passenger of the mob's display, so a client moves it with the mob;
   when the mob is moved 15 blocks the aim is lost and the display is removed within two ticks,
-  and it is added again at the mob when the player looks at it there (`/root/jbtest/namelive.sh`,
+  and it is added again at the mob when the player looks at it there (`namelive.sh`,
   the bot's `RIDE` lines: `RIDE 66 text_display on [40 interaction, 39 item_display]: at 58.50
   131.95 40.50 (1.95 above the mob's feet)`). The too tall hitbox explains "high up". A name
   that stays behind was not reproduced with the bot, which does not draw anything: whether a
   real client still shows that after the hitbox fix is open.
-- **The red flash was not seen in a real 26.2 client** (two hits on a Charizard on flat, with
-  the wheel that has it). What is proven: the pack the client loaded has the tint on every
-  entity model (`/root/jbtest/tintcheck.py <zip>`: 30876 models with a `custom_model_data`
+- **The red flash shows in a real 26.2 client** (0.3.4: a hit Decidueye turned red; the first two
+  tries had missed, the hit had not reached the server). What was proven before that: the pack the client loaded has the tint on every
+  entity model (`tintcheck.py <zip>`: 30876 models with a `custom_model_data`
   tint source, 484576 faces with `tintindex` 0, none without; the pack from before the change
   has none); the server sends ActorEvent 2 for the hit; the bridge then sends each of the mob's
   displays its item with `custom_model_data` colours `[ff5a5a]` and the part's number in the
@@ -561,7 +561,7 @@ What a Java client does by itself for a living mob, and cannot for one drawn wit
   "Charmander No. 0004" and its text, and "I choose you!" takes it. Showing the pictures would
   need the pack's UI textures as glyphs of a font in the converted pack (a button label is
   text); not done.
-- Test: `/root/jbtest/starterlive.sh` (the bot: `form N` clicks the form's button N). The bot
+- Test: `starterlive.sh` (the bot: `form N` clicks the form's button N). The bot
   saw `> Kanto 1 <, Kanto 2, Kanto 3, Johto 1-3, Hoenn 1-3, I choose you!, Exit, Up, Down`,
   `columns=3`, width 90; `form 1` brought the dialog back with Charmander and `> Kanto 2 <`,
   `form 9` gave "You chose Charmander!".
@@ -580,7 +580,7 @@ What a Java client does by itself for a living mob, and cannot for one drawn wit
   does not know the wire form of the book components, so its decoder stops at one: the bot
   printed the stack as far as it got. With `jbbot -find "Kirbycope|Every control in one
   place"` the author and the first page are in the inventory packet (`FOUND "Kirbycope" in
-  packet 0x12 (4620 bytes) at 302`), and open_book follows the use (`/root/jbtest/booklive.sh`).
+  packet 0x12 (4620 bytes) at 302`), and open_book follows the use (`booklive.sh`).
 - **A 26.2 client did not get the content at all.** For a client older than the newest version
   the item package leaves out every raw component whose wire form it does not know (it cannot
   tell whether that version reads it the same way), so the book went out as a bare
