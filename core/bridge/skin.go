@@ -24,17 +24,28 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/sandertv/gophertunnel/minecraft/protocol"
 	"github.com/sandertv/gophertunnel/minecraft/protocol/login"
 )
 
-// The Java player's own skin as their Bedrock skin, built the way a Windows client sends a custom
-// (classic) skin: 64x64 RGBA, geometry.humanoid.custom (or customSlim for the slim/Alex model)
-// with the geometry taken from the game's vanilla skin pack, a compact resource patch, engine
-// version 0.0.0, not trusted, not premium. The skin comes from the profile's textures property
-// (online-mode logins and proxies forward it), else from Mojang by name (offline logins). The
-// cape goes along when there is one. Without a skin: the vanilla Steve as a client sends it.
-// Textures are cached on disk in <data dir>/skins, by their content hash (the texture URL's last
-// part); name lookups for skinLookupTTL.
+// The Java player's own skin as their Bedrock skin: 64x64 RGBA, the vanilla geometry
+// geometry.humanoid.custom (or customSlim for the slim/Alex model) named in the resource patch,
+// the cape when there is one. The skin comes from the profile's textures property (online-mode
+// logins and proxies forward it), else from Mojang by name (offline and cracked hybrid logins of a
+// premium name). Without a skin: the vanilla Steve. Textures are cached on disk in
+// <data dir>/skins, by their content hash (the texture URL's last part); name lookups for
+// skinLookupTTL. A lookup never holds a login up for longer than skinTimeout.
+//
+// Trust: BDS decides itself whether a login's skin is trusted, and Bedrock clients that only show
+// trusted skins (a client setting) draw an untrusted one as a default skin picked by the player's
+// UUID (Steve, Alex, Ari...). BDS (ServerNetworkHandler, 1.21.3) sets
+//
+//	trusted = PersonaSkin || (PremiumSkin && isValidSkinGeometry(geometry data))
+//
+// where isValidSkinGeometry passes empty (null) geometry data or geometry whose hash is on the
+// Marketplace list. So the skin is sent as Geyser sends Java skins to Bedrock clients: premium,
+// no geometry data (the client takes the named vanilla geometry from its own resources), the
+// game version as the geometry engine version. ClientData.TrustedSkin is ignored by BDS.
 
 //go:embed skinassets
 var skinAssets embed.FS
@@ -47,21 +58,20 @@ const (
 	standardSkinPack = "c18e65aa-7b21-4637-9b63-8ad63622ef01"
 	// skinLookupTTL is how long a Mojang name lookup is kept.
 	skinLookupTTL = 6 * time.Hour
-	// skinTimeout bounds the whole skin lookup of a login.
-	skinTimeout = 6 * time.Second
+	// skinTimeout bounds the whole skin lookup of a login (the login waits for it).
+	skinTimeout = 4 * time.Second
 )
 
-var mojangHTTP = &http.Client{Timeout: 5 * time.Second}
+var mojangHTTP = &http.Client{Timeout: 3 * time.Second}
 
 // bedrockSkin is a skin ready for the login client data.
 type bedrockSkin struct {
-	rgba    []byte // 64x64
-	slim    bool
-	id      string
-	trusted bool
-	colour  string
-	cape    []byte // 64x32, nil: none
-	capeID  string
+	rgba   []byte // 64x64
+	slim   bool
+	id     string
+	colour string
+	cape   []byte // 64x32, nil: none
+	capeID string
 }
 
 // apply puts the skin in the client data.
@@ -72,16 +82,16 @@ func (s *bedrockSkin) apply(cd *login.ClientData) {
 		geo = "geometry.humanoid.customSlim"
 		cd.ArmSize = "slim"
 	}
-	geometry, _ := skinAssets.ReadFile("skinassets/" + geo + ".json")
 	cd.SkinID = s.id
 	cd.SkinData = base64.StdEncoding.EncodeToString(s.rgba)
 	cd.SkinImageWidth, cd.SkinImageHeight = 64, 64
 	cd.SkinResourcePatch = base64.StdEncoding.EncodeToString([]byte(`{"geometry":{"default":"` + geo + `"}}`))
-	cd.SkinGeometry = base64.StdEncoding.EncodeToString(geometry)
-	cd.SkinGeometryVersion = base64.StdEncoding.EncodeToString([]byte("0.0.0"))
+	cd.SkinGeometry = "" // no geometry data: BDS trusts the skin (see above)
+	cd.SkinGeometryVersion = base64.StdEncoding.EncodeToString([]byte(protocol.CurrentVersion))
 	cd.SkinColour = s.colour
-	cd.TrustedSkin = s.trusted
-	cd.PremiumSkin, cd.PersonaSkin, cd.OverrideSkin = false, false, false
+	cd.TrustedSkin = true
+	cd.PremiumSkin, cd.PersonaSkin, cd.OverrideSkin = true, false, false
+	cd.CapeData, cd.CapeImageWidth, cd.CapeImageHeight, cd.CapeID = "", 0, 0, ""
 	if s.cape != nil {
 		cd.CapeData = base64.StdEncoding.EncodeToString(s.cape)
 		cd.CapeImageWidth, cd.CapeImageHeight = 64, 32
@@ -316,7 +326,7 @@ func steveSkin() *bedrockSkin {
 	if err != nil {
 		panic(ProductName + ": embedded steve.png: " + err.Error())
 	}
-	return &bedrockSkin{rgba: toNRGBA(img, 64, 64).Pix, id: standardSkinPack + ".Steve", trusted: true, colour: "#0"}
+	return &bedrockSkin{rgba: toNRGBA(img, 64, 64).Pix, id: standardSkinPack + ".Steve", colour: "#0"}
 }
 
 // toNRGBA draws img into a new w x h non-premultiplied RGBA image (Bedrock skin bytes).
