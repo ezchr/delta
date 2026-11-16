@@ -119,6 +119,8 @@ same on both transports.
 | `pack_cache_mb` | `512` | Size limit of the pack cache (`plugins/delta/packs`). |
 | `java_online` | follows `account_mode` | Overrides only the Java listener's Mojang check: `"true"` = every login (online), `"false"` or `"hybrid"` = premium names only (**hybrid**: `"false"` no longer lets anyone use a premium name), `"unverified"` = nobody (tests only; anyone can take any name). Leave unset in production. |
 | `animations` | `on` | `"off"`: custom mobs are not animated, each is its one static model (fewer entities and packets for the client). |
+| `anim_parts` | `24` | The most item displays an animated custom mob is drawn with: a number, or `"all"` for a display per bone that moves (bones that move least are merged into their parents to meet a number). Changing it converts the pack again (another pack hash). |
+| `anim_full_mobs` | `0` | With `anim_parts` a number: this many of the nearest animated mobs are drawn in full detail (as `"all"`), the others merged to `anim_parts`. Needs a second set of part models in the pack. |
 | `debug_anim` | — | Any value: log when a custom mob's part displays come and go and what its animation controllers play. |
 | `identity_hook` | follows `account_mode` | `"true"`/`"false"`: derived XUID via the hook or not, independent of the Mojang check. Testing only. |
 

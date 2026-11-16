@@ -38,10 +38,10 @@ import (
 //     player's feet is static too (animSees);
 //   - only the parts whose pose changed are sent, and a still mob costs nothing.
 //
-// The worst case is every part of every animated mob moving, all of them mobs with more moving
-// bones than anim.MaxParts (32): 6*32 displays at 6.7 Hz plus 10*32 at 3.3 Hz = 2350 entity data
-// packets a second (about 40 bytes each), and 512 display entities. Most mobs have far fewer
-// parts (16 Pokemon around a player: about 250 displays).
+// How many parts a mob has is a setting (animParts, animFullMobs below). With the default of 24
+// the worst case is every part of 16 big mobs moving: 6*24 displays at 6.7 Hz plus 10*24 at
+// 3.3 Hz = 1760 entity data packets a second (about 40 bytes each) and 384 display entities.
+// docs/NOTES.md has the measured numbers for the other settings.
 const (
 	animNearTicks = 3
 	animFarTicks  = 6

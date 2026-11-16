@@ -271,8 +271,70 @@ What was weighed:
   packet like a pose is, and nothing interpolates between two models: fingers would snap. It
   also needs the motion clustered into frames per animation. Not built, not recommended.
 
-Recommended and built on the branch: one item definition per entity, and 32 parts. The next
-step, if Charizard's fingers matter up close, is a 48-part set for the nearest two mobs.
+Built on the branch: one item definition per entity; the budget as a setting
+(`[core.options] anim_parts`: a number, default 24, or `"all"`); and a full-detail set for the
+nearest mobs (`anim_full_mobs`, with `anim_parts` a number). 32 for everyone was dropped.
+
+**Every moving bone (`anim_parts = "all"`), measured.** Conversion (`/root/jbtest/measure2.sh`,
+`animpreview` with `/usr/bin/time`; "all packs" is the test world's six resource pack folders,
+without the items a server's registry adds):
+
+| Setting | Part models | Pack, Cobblemon | Pack, all packs | Conversion | Peak memory |
+|---|---|---|---|---|---|
+| 24 | 18593 | 25.1 MB | 25.2 MB | 10-14 s | 1.33-1.45 GB |
+| 32 | 22397 | 26.6 MB | 26.7 MB | 11 s | 1.35-1.42 GB |
+| 48 | 26919 | 28.3 MB | 28.4 MB | 10 s | 1.37-1.51 GB |
+| all | 29870 | 29.5 MB | 29.6 MB | 9-10 s | 1.32-1.43 GB |
+| 24 + full set | 18593 + 24258 | 37.7 MB | 37.8 MB | 11 s | 1.54-1.60 GB |
+
+Time and memory do not depend on the setting (the plan is one merge sequence whatever the
+budget; the memory is the tool holding the 290 MB pack, its textures and the zip). On the live
+server (items and blocks included) the pack was 29.0 MB at 24, 33.4 MB at all and 41.6 MB with
+both sets.
+
+| Mob | Bones | Parts at all | Pixel difference idle / walk / fly or swim | Updates per second standing / moved |
+|---|---|---|---|---|
+| Charizard | 130 | 83 | 0.03 / 0.02 / 0.07 % | not caught alone / 532 |
+| Pikachu | 92 | 49 | 0.00 / 0.00 % | 223 / 325 |
+| Eevee | 92 | 30 | 0.02 / 0.03 % | 5 / 39-65 |
+| Gyarados | 112 | 64 | 0.18 / - / 0.25 % | 325 / 420 |
+| Decidueye | 226 | 106 | 0.04 / 0.04 / 0.05 % | 17 / 135 (window cut short) |
+
+(Bot, one mob at 3 to 6 blocks, stepped every 3 ticks: the ceiling is parts x 6.7. The mob was
+"moved" by teleporting it 0.15 blocks ten times a second. Eevee and Decidueye standing sent
+almost nothing: their idle pose barely moved in those six seconds.)
+
+Twelve big mobs summoned around the bot (4 Charizard, 4 Decidueye, 4 Gyarados; 9 stayed on the
+platform and in sight), all breathing, bot counts over 10 s (`detaillive.sh worst`):
+
+| Setting | Displays | Updates per second | Pack (live) |
+|---|---|---|---|
+| `anim_parts = 24` | 216 | 690 | 29.0 MB |
+| 24, `anim_full_mobs = 4` | 557 | 1690 | 41.6 MB |
+| 24, `anim_full_mobs = 8` | 719 | 1950 | 41.6 MB |
+| 24, `anim_full_mobs = 16` | 759 | 2080 | 41.6 MB |
+| `anim_parts = "all"` | 759 | 2070 | 33.4 MB |
+
+(With 4, up to 6 mobs are in full detail: one that has it keeps it until it is two places past
+the count.) By the same per-mob numbers, 16 Decidueyes in sight at "all" would be 1700
+displays and, all parts moving, 6*106*6.7 + 10*106*3.3 = 7800 updates a second.
+
+What the numbers say: the second part set costs more pack (8.2 MB) than giving every mob every
+bone (4.4 MB over 24), and it only saves packets for big mobs beyond the nearest few. The
+cheaper way to bound the far cost with one set is fewer far animation slots (`animFar`), not a
+second set: a display has no parent to inherit a pose from (a passenger follows its vehicle's
+position only), so "update the group roots only" still needs a packet per display. Whether
+"all" is affordable is a frame rate question for a real client.
+
+Hard limits met: none refused anything in the bot or `checkpack.py`. The most `range_dispatch`
+entries in one item definition, merged and full set together, is 139 (Delphox);
+custom model data is a float, exact far beyond that. The most elements in
+one part model is 107. Element coordinates stay inside -16..32 because a part that reaches
+further from its pivot is shrunk and the display scales it back
+; the smallest element is 0.34 pixels on its longest side, which shrinking makes smaller
+but not invisible. A bundle holds 4096 packets; a set swap of 139 parts is 283. Four part
+models had no element at all (cubes without a face): they are left out now; on `animations`
+they are still written with `"elements": null`.
 
 **What is not evaluated degrades to still.** A channel whose Molang does not compile or uses a
 query the bridge has no answer for is left out (that bone keeps still on that channel); an
