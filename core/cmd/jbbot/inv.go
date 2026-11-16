@@ -66,6 +66,16 @@ func init() {
 	extraHandlers = append(extraHandlers, invHandle)
 	extraSteps["inv"] = func(b *bot, a []string) time.Duration { binv.dump(); return 0 }
 	extraSteps["click"] = invStepClick
+	// qclick: a click without waiting for the answer (clicks faster than the server answers).
+	extraSteps["qclick"] = func(b *bot, a []string) time.Duration { invStepClick(b, a); return 60 * time.Millisecond }
+	// burst S1 S2 ...: quick moves (shift-clicks) of these slots sent back to back, as a client's
+	// shift-double-click sends them (one per slot holding the item, in the same frame).
+	extraSteps["burst"] = func(b *bot, a []string) time.Duration {
+		for _, x := range a[1:] {
+			invStepClick(b, []string{"click", x, "0", "1"})
+		}
+		return 500 * time.Millisecond
+	}
 	extraSteps["drag"] = invStepDrag
 	extraSteps["close"] = func(b *bot, a []string) time.Duration {
 		w := &wire.Writer{}
@@ -680,7 +690,9 @@ func (s *invState) apply(slot, button, mode int) {
 		st := sl[slot]
 		var dst []int
 		if s.win == 0 {
-			switch {
+			switch eq := invEquipSlot(st.id); {
+			case slot >= 9 && eq >= 0 && sl[eq].empty():
+				dst = []int{eq} // vanilla InventoryMenu: armour to its empty slot, a shield to the off hand
 			case slot < 9:
 				dst = invRange(9, 45, true)
 			case slot < 36:
@@ -890,4 +902,23 @@ func invStepDrag(b *bot, a []string) time.Duration {
 	}
 	invSendClick(b, win, state, -999, end, 5, changed, s.carried)
 	return 500 * time.Millisecond
+}
+
+// invEquipSlot is the inventory window slot a vanilla client quick-moves an item into before the
+// inventory (armour 5-8, off hand 45), -1 for none (by item name: enough for the tests).
+func invEquipSlot(id int32) int {
+	n := strings.TrimPrefix(jitem.Name(id), "minecraft:")
+	switch {
+	case strings.HasSuffix(n, "_helmet") || n == "carved_pumpkin" || strings.HasSuffix(n, "_head") || strings.HasSuffix(n, "_skull"):
+		return 5
+	case strings.HasSuffix(n, "_chestplate") || n == "elytra":
+		return 6
+	case strings.HasSuffix(n, "_leggings"):
+		return 7
+	case strings.HasSuffix(n, "_boots"):
+		return 8
+	case n == "shield":
+		return 45
+	}
+	return -1
 }

@@ -41,6 +41,7 @@ var (
 	hashFile  = flag.String("hashes", "", "write column hashes here (x z hash per line)")
 	dumpCols  = flag.String("dump", "", "write every block state of these columns (x,z;x,z) to <hashes>.dump")
 	blocksRep = flag.String("blocks", os.Getenv("JB_BLOCKS_REPORT"), "Java blocks report (generated/reports/blocks.json of the 26.3 server data generator)")
+	velocity  = flag.String("velocity", "", "Velocity forwarding.secret file: answer the modern forwarding query as the proxy would (a bridge behind Velocity)")
 )
 
 func main() {
@@ -174,6 +175,8 @@ func (b *bot) run() error {
 			done = true
 		case v777.ClientboundLoginLoginDisconnect:
 			return fmt.Errorf("kicked at login: %s", wire.NewReader(body).String(262144))
+		case v777.ClientboundLoginCustomQuery:
+			b.c.Send(v777.ServerboundLoginCustomQueryAnswer, velocityAnswer(body, *name, *velocity))
 		case v777.ClientboundLoginCookieRequest:
 			r := wire.NewReader(body)
 			key := r.String(32767)
