@@ -39,6 +39,17 @@ type Windows struct {
 	stateID int32
 	dirty   bool // resync the open window at the next tick
 
+	// invWindow is the server's window id of its open inventory screen (its ContainerOpen of
+	// type 0xff; 0: none). The server closes that screen by this id, not by 0.
+	invWindow byte
+	// invReopen: a request was refused; open the inventory again before the next click in it
+	// (the server's screen may be gone; an open while it is open is ignored by BDS).
+	invReopen bool
+	// resend: ask the server for the inventory again at the next tick (a refused request);
+	// resendWait ticks are left before the next such ask.
+	resend     bool
+	resendWait int
+
 	cur    *window // the server's open window
 	nextID int32   // last Java window id given
 
@@ -76,6 +87,7 @@ func init() {
 			clear(w.state)
 			clear(w.auth)
 			w.held, w.invOpen, w.pending, w.dirty = 0, false, nil, false
+			w.invWindow, w.invReopen, w.resend, w.resendWait = 0, false, false, 0
 			w.recipes, w.creative, w.cindex, w.itab = nil, nil, nil, nil
 			w.forms = formState{}
 		}
@@ -350,7 +362,12 @@ func init() {
 		w := p.win
 		p.log.Debug("container open", "window", pk.WindowID, "type", pk.ContainerType, "pos", pk.ContainerPosition, "entity", pk.ContainerEntityUniqueID)
 		if pk.WindowID == protocol.WindowIDInventory || pk.ContainerType == 0xff {
-			return // the player's own inventory (our Interact's answer): the Java client opens it itself
+			// The player's own inventory (our Interact's answer): the Java client opens it itself.
+			// Its window id is how the server names it when it closes it.
+			if pk.ContainerType == 0xff && w.cur == nil {
+				w.invWindow, w.invOpen = pk.WindowID, true
+			}
+			return
 		}
 		if pk.ContainerType == protocol.ContainerTypeTrade {
 			return // the trade window opens with UpdateTrade (trade.go)
@@ -360,7 +377,7 @@ func init() {
 		}
 		c := &window{bid: pk.WindowID, typ: pk.ContainerType, pos: pk.ContainerPosition, entity: pk.ContainerEntityUniqueID, cid: protocol.ContainerLevelEntity}
 		w.cur = c
-		w.invOpen = false
+		w.invOpen, w.invWindow = false, 0
 		pos := cube.Pos{int(c.pos[0]), int(c.pos[1]), int(c.pos[2])}
 		if p.world != nil && (c.entity == -1 || c.entity == 0) {
 			if b, ok := p.world.Block(pos); ok {
@@ -393,8 +410,12 @@ func init() {
 	})
 	OnBedrock(packet.IDContainerClose, func(p *Player, pk *packet.ContainerClose) {
 		w := p.win
-		if pk.WindowID == protocol.WindowIDInventory {
-			w.invOpen = false
+		// The inventory screen closes as window 0 or by the id it opened with: the server's
+		// answer to our close, or the server closing it itself (the Java client keeps its screen
+		// open; the next click opens the server's again).
+		if pk.WindowID == protocol.WindowIDInventory || w.invWindow != 0 && pk.WindowID == w.invWindow &&
+			(w.cur == nil || w.cur.bid != pk.WindowID) {
+			w.invOpen, w.invWindow = false, 0
 		}
 		if c := w.cur; c != nil && c.bid == pk.WindowID {
 			if pk.ServerSide {
@@ -418,6 +439,7 @@ func init() {
 		w := p.win
 		if id == 0 {
 			w.returnItems()
+			w.invReopen = false
 			if w.invOpen {
 				w.invOpen = false
 				p.Write(&packet.ContainerClose{WindowID: protocol.WindowIDInventory, ContainerType: 0xff})

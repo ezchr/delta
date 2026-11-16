@@ -329,6 +329,13 @@ func init() {
 				w.showWindow()
 			}
 		}
+		if w.resendWait > 0 {
+			w.resendWait--
+		}
+		if w.resend && w.resendWait == 0 && p.rem != nil && !p.inWaiting {
+			w.resend, w.resendWait = false, resendTicks
+			p.Write(&packet.InventoryTransaction{TransactionData: &protocol.MismatchTransactionData{}})
+		}
 		if w.dirty {
 			w.dirty = false
 			w.resync()
@@ -437,12 +444,30 @@ func (w *Windows) resync() {
 // openInventory tells the server the inventory is open before the first click in it (a Bedrock
 // client opens it before anything can be clicked).
 func (w *Windows) openInventory() {
-	if w.invOpen || w.cur != nil {
+	if w.cur != nil || w.invOpen && !w.invReopen {
 		return
 	}
-	w.invOpen = true
+	w.invOpen, w.invReopen = true, false
 	p := w.p
 	p.Write(&packet.Interact{ActionType: packet.InteractActionOpenInventory, TargetEntityRuntimeID: p.rem.gd.EntityRuntimeID})
+}
+
+// resendTicks is the least time between two asks for the inventory (refusals come in bursts: a
+// refused request fails the requests made on its prediction too).
+const resendTicks = 10
+
+// refused handles a request the server refused: the bridge's slots (stack network ids) or its
+// idea of the server's open screen are not what the server has. BDS refuses a slot whose stack id
+// is not the one it has (FailedToValidateSrcSlot/DstSlot, 49/50) and every main inventory slot on
+// its HUD screen (no inventory screen open), and a refused request changes nothing, so the next
+// click would fail the same way. So: ask for the inventory again (the mismatch transaction a
+// Bedrock client sends: BDS sends every player inventory again with its stack ids, and the
+// client gets the server's slots) and open the inventory screen again before the next click in it.
+func (w *Windows) refused() {
+	w.resend = true
+	if w.cur == nil {
+		w.invReopen = true
+	}
 }
 
 // closeStrayInventory closes the server's inventory window when the bridge opened it for clicks
@@ -675,11 +700,13 @@ func (w *Windows) track(q *stackRequest, pred map[slotKey]protocol.ItemInstance)
 // plan turns the slot changes of one click into the request's actions, and reports whether the
 // server can be asked for all of it.
 func (w *Windows) plan(changes []*change, q *stackRequest) bool {
-	// Swaps: two slots that exchanged their whole stacks.
+	// Swaps: two slots that exchanged their whole stacks of different items. Two stacks of one
+	// item whose counts look exchanged are a move: a shift-click of a full stack onto a partial
+	// one with no room for the rest (64 and 60 -> 60 and 64) moves 4, as the Java client did.
 	used := map[*change]bool{}
 	for _, a := range changes {
 		for _, b := range changes {
-			if a == b || used[a] || used[b] || a.beforeEmpty() || b.beforeEmpty() {
+			if a == b || used[a] || used[b] || a.beforeEmpty() || b.beforeEmpty() || a.bid == a.aid {
 				continue
 			}
 			if a.bid == b.aid && a.bn == b.an && b.bid == a.aid && b.bn == a.an {
@@ -844,6 +871,7 @@ func (w *Windows) responses(rs []protocol.ItemStackResponse) {
 		}
 		if rsp.Status != protocol.ItemStackResponseStatusOK {
 			p.log.Info("server refused an inventory action", "request", rsp.RequestID, "status", rsp.Status)
+			w.refused()
 			for k, before := range pr.snap {
 				if k == createdKey {
 					continue
