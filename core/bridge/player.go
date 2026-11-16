@@ -2,6 +2,7 @@ package bridge
 
 import (
 	"context"
+	"delta/core/internal/javapack"
 	"errors"
 	"fmt"
 	"github.com/google/uuid"
@@ -28,6 +29,8 @@ type Player struct {
 	// hudMarkers are the current server pack's HUD markers (javapack.Result.HudMarkers): titles
 	// holding one are not shown. Set when the server is dialled.
 	hudMarkers []string
+	// formScreens are the screens that pack draws for forms (javapack.Result.FormScreens).
+	formScreens []javapack.FormScreen
 
 	log     *slog.Logger
 	java    *JavaConn

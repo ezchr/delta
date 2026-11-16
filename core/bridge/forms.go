@@ -1,6 +1,7 @@
 package bridge
 
 import (
+	"delta/core/internal/javapack"
 	"encoding/json"
 	"errors"
 	"math"
@@ -48,6 +49,7 @@ type bedrockForm struct {
 type formElement struct {
 	Type        string     `json:"type"`
 	Text        formText   `json:"text"`
+	Image       formImage  `json:"image"`
 	Default     any        `json:"default"`
 	Placeholder formText   `json:"placeholder"`
 	Min         float64    `json:"min"`
@@ -55,6 +57,32 @@ type formElement struct {
 	Step        float64    `json:"step"`
 	Options     []formText `json:"options"`
 	Steps       []formText `json:"steps"`
+}
+
+// formImage is a button's picture: a texture path in the server's pack, or a URL.
+type formImage struct {
+	Type string `json:"type"`
+	Data string `json:"data"`
+}
+
+// formScreen is the screen the server's pack draws for a form with this title (packs.go), nil
+// for an ordinary form.
+func (p *Player) formScreen(title string) *javapack.FormScreen {
+	for i := range p.formScreens {
+		if s := &p.formScreens[i]; strings.Contains(title, s.Marker) {
+			return s
+		}
+	}
+	return nil
+}
+
+// buttonWords makes a button's internal name readable: "arrow_up" -> "Arrow up".
+func buttonWords(s string) string {
+	s = strings.TrimSpace(strings.NewReplacer("_", " ", ".", " ").Replace(s))
+	if s == "" {
+		return s
+	}
+	return strings.ToUpper(s[:1]) + s[1:]
 }
 
 func init() {
@@ -111,22 +139,61 @@ func (p *Player) showForm(pk *packet.ModalFormRequest) {
 	w.VarInt(0) // a dialog given inline
 	w.Byte(text.TagCompound)
 	text.StringTag(w, "type", "minecraft:multi_action")
+	// A form the pack draws as a screen of its own: its body is packed data for that layout, so
+	// the title, the text and the buttons' names come from the layout (javapack.FormScreen).
+	screen := p.formScreen(string(bf.Title))
+	if screen != nil && bf.Type != "form" {
+		screen = nil
+	}
 	title := bedrockText(string(bf.Title))
+	if screen != nil {
+		title = bedrockText(screen.PlainTitle())
+	}
 	text.ComponentTag(w, "title", &title)
 	text.BoolTag(w, "pause", false)
 	text.StringTag(w, "after_action", "close")
 
 	var body, buttons []string
+	var buttonIndex []int32 // the form's number of each button shown (nil: its place in buttons)
 	var inputs []formElement
 	switch bf.Type {
 	case "form":
 		var content string
 		_ = json.Unmarshal(bf.Content, &content)
-		body = appendBody(body, content)
 		elems := bf.Buttons
 		if len(elems) == 0 {
 			elems = bf.Elements
 		}
+		if screen != nil {
+			data := javapack.NewFormData(string(bf.Title), content)
+			body = append(body, screen.Body(data)...)
+			same := map[string]int{}
+			for _, e := range elems {
+				same[string(e.Text)]++
+			}
+			n := int32(0)
+			for _, e := range elems {
+				if e.Type != "" && e.Type != "button" {
+					continue
+				}
+				i := n
+				n++
+				if screen.Hidden(int(i), e.Image.Data, data) {
+					continue
+				}
+				label := screen.ButtonLabel(int(i), data)
+				if label == "" && same[string(e.Text)] > 1 {
+					label = screen.ButtonHeader(int(i), data)
+				}
+				if label == "" {
+					label = buttonWords(string(e.Text))
+				}
+				buttons = append(buttons, label)
+				buttonIndex = append(buttonIndex, i)
+			}
+			break
+		}
+		body = appendBody(body, content)
 		for _, e := range elems {
 			switch e.Type {
 			case "", "button":
@@ -159,7 +226,11 @@ func (p *Player) showForm(pk *packet.ModalFormRequest) {
 		}
 		text.ListStart(w, "actions", text.TagCompound, len(buttons))
 		for i, b := range buttons {
-			writeButton(w, labelText(b), id, int32(i))
+			n := int32(i)
+			if buttonIndex != nil {
+				n = buttonIndex[i]
+			}
+			writeButton(w, labelText(b), id, n)
 		}
 	}
 	if bf.Type == "modal" {

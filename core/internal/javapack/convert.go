@@ -92,6 +92,9 @@ type Result struct {
 	// HudMarkers are the texts a pack's own HUD (ui/*.json) looks for in the title, subtitle or
 	// action bar: a title holding one is data for that HUD, not text for the player.
 	HudMarkers []string
+	// FormScreens are the screens a pack draws for server forms (ui/server_form.json): what the
+	// bridge needs to show such a form as text instead of the packed data it carries.
+	FormScreens []FormScreen
 
 	Stats Stats
 }
