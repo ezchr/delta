@@ -73,12 +73,24 @@ func TestHeldPlacement(t *testing.T) {
 		t.Fatal("the display rotation should leave the blade unturned")
 	}
 	k, c := fit(els, true)
-	tp, _ := heldDisplays(best, c, k)
+	tp, fp := heldDisplays(best, c, k, pre.t, heldFPScale)
 	mc := [3]float64{(els[0].from[0] + els[0].to[0]) / 2, (els[0].from[1] + els[0].to[1]) / 2, (els[0].from[2] + els[0].to[2]) / 2}
 	d := tp.at(mc)
 	got := handR.apply([3]float64{handV[0] + d[0], handV[1] + d[1], handV[2] + d[2]})
 	if !near(got, want) {
 		t.Fatalf("cube centre in the arm at %v, Bedrock draws it at %v", got, want)
+	}
+	// First person: the grip stays where vanilla's pose puts the third person grip, the model
+	// shrunk about it.
+	gtp := pre.t // the grip in the item frame
+	gm := [3]float64{8 + (best.transpose().apply(gtp)[0]-c[0])*k, 8 + (best.transpose().apply(gtp)[1]-c[1])*k, 8 + (best.transpose().apply(gtp)[2]-c[2])*k}
+	gv := vanillaTP.rot.transpose().apply([3]float64{gtp[0] - vanillaTP.t[0], gtp[1] - vanillaTP.t[1], gtp[2] - vanillaTP.t[2]})
+	gv = [3]float64{8 + gv[0]/vanillaTP.s, 8 + gv[1]/vanillaTP.s, 8 + gv[2]/vanillaTP.s}
+	if !near(fp.at(gm), vanillaFP.at(gv)) {
+		t.Fatalf("first person grip %v, want %v", fp.at(gm), vanillaFP.at(gv))
+	}
+	if math.Abs(fp.s-vanillaFP.s/vanillaTP.s*heldFPScale/k) > 1e-9 {
+		t.Fatalf("first person scale %v", fp.s)
 	}
 	// The blade points forward (Java entity -z) from the hand in third person, as on Bedrock.
 	if want[2] > bedrockGrip[2]-5 {
@@ -92,7 +104,7 @@ func TestHeldPlacement(t *testing.T) {
 	// Vanilla's own third person pose maps to vanilla's first person pose.
 	van := vanillaTP.rot
 	cc := van.transpose().apply(vanillaTP.t)
-	tp2, fp2 := heldDisplays(van, cc, 1/vanillaTP.s)
+	tp2, fp2 := heldDisplays(van, cc, 1/vanillaTP.s, [3]float64{}, 1)
 	if !near(tp2.t, vanillaTP.t) || math.Abs(tp2.s-vanillaTP.s) > 1e-9 {
 		t.Fatalf("tp %+v", tp2)
 	}

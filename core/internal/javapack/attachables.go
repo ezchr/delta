@@ -704,7 +704,7 @@ func heldModel(g *geometry, anim map[string]boneAnim, tex texInfo) (map[string]a
 		tw, th = float64(tex.size.X), float64(tex.size.Y)
 	}
 	m := modelJSON(els, tex.id, tw, th)
-	tp, fp := heldDisplays(best, c, k)
+	tp, fp := heldDisplays(best, c, k, pre.t, heldFPScale)
 	m["display"] = map[string]any{
 		"thirdperson_righthand": tp.json(),
 		"firstperson_righthand": fp.json(),
@@ -712,17 +712,24 @@ func heldModel(g *geometry, anim map[string]boneAnim, tex texInfo) (map[string]a
 	return m, true
 }
 
+// heldFPScale shrinks a held model in first person about the grip: Bedrock models are drawn at
+// the player's scale (a katana is longer than a sword sprite), which fills the first person view
+// at vanilla's sword scale; Bedrock's own first person poses use about half.
+const heldFPScale = 0.6
+
 // heldDisplays are the third and first person transforms of a held model turned by best (its
-// elements are best^T of the item frame) and fitted by fit's k and centre c.
-func heldDisplays(best mat3, c [3]float64, k float64) (tp, fp display) {
+// elements are best^T of the item frame) and fitted by fit's k and centre c. grip is the hand's
+// point in the item frame; the first person pose is shrunk by fpScale about it.
+func heldDisplays(best mat3, c [3]float64, k float64, grip [3]float64, fpScale float64) (tp, fp display) {
 	// Third person: d(m) = best*(c + (m-8)/k).
 	bc := best.apply(c)
 	tp = display{rot: best, t: bc, s: 1 / k}
-	// First person: vanillaFP(vanillaTP^-1(tp(m))).
+	// First person: vanillaFP(vanillaTP^-1(shrink(tp(m)))), shrink about the grip.
+	sc := [3]float64{grip[0] + fpScale*(bc[0]-grip[0]), grip[1] + fpScale*(bc[1]-grip[1]), grip[2] + fpScale*(bc[2]-grip[2])}
 	rel := vanillaFP.rot.mul(vanillaTP.rot.transpose())
 	ratio := vanillaFP.s / vanillaTP.s
-	rd := rel.apply([3]float64{bc[0] - vanillaTP.t[0], bc[1] - vanillaTP.t[1], bc[2] - vanillaTP.t[2]})
-	fp = display{rot: rel.mul(best), s: ratio / k,
+	rd := rel.apply([3]float64{sc[0] - vanillaTP.t[0], sc[1] - vanillaTP.t[1], sc[2] - vanillaTP.t[2]})
+	fp = display{rot: rel.mul(best), s: ratio * fpScale / k,
 		t: [3]float64{vanillaFP.t[0] + ratio*rd[0], vanillaFP.t[1] + ratio*rd[1], vanillaFP.t[2] + ratio*rd[2]}}
 	return tp, fp
 }
