@@ -16,7 +16,7 @@ import (
 func TestModelFx(t *testing.T) {
 	p, take := soundPlayer(t, version.Newest)
 	p.rem.jpack = animTestPack()
-tp.mv.yaw = 180 // looking away from where the mob will be
+	p.mv.yaw = 180 // looking away from where the mob will be
 	name := protocol.EntityMetadata{protocol.EntityDataKeyName: "Walker Lv. 3\nPress Use"}
 	p.dispatchBedrock(&packet.AddActor{EntityType: "t:walker", EntityRuntimeID: 10, EntityUniqueID: -10, Position: mgl32.Vec3{0, 0, 4}, EntityMetadata: name})
 	me := p.packs.ents[10]
