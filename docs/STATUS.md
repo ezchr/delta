@@ -83,6 +83,12 @@ account, but the 1.21->26.3 registry translation drops the client - see docs/LOG
   Java client must reach the pack HTTP server: `pack_listen`/`pack_url`). Agent C owns packs.
 * Skins of other players: looked up from a public skin API by XUID; offline Bedrock players have
   none, so they are Steve/Alex.
+* Java players' skins on Bedrock: the Java skin (textures property, else a Mojang name lookup;
+  classic/slim, legacy 64x32 upgraded, cape) goes into the login as a premium skin WITHOUT
+  geometry data, because BDS only trusts PersonaSkin or PremiumSkin with empty/Marketplace
+  geometry, and Bedrock clients that only show trusted skins draw untrusted ones as a default skin
+  (skin.go). Bridged Java players see each other through their signed textures. A skin changed
+  on Java shows after a rejoin (Java clients cannot change skins mid-session).
 * `/jb status|ping|reconnect` is the only bridge command.
 * Windows build: not done (see Build).
 
