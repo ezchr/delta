@@ -81,7 +81,8 @@ account, but the 1.21->26.3 registry translation drops the client - see docs/LOG
   stable derived XUID on an `online-mode=false` BDS. See docs/LOGIN.md, CONFIG.md and Stage 2 below.
 * Resource packs: on by default since 0.3.2; the Java port serves the download (CONFIG.md,
   "Resource packs"). Tested with the test bot on a loopback server with a retexture pack and the
-  Cobblemon Bedrock port (36000 files); not yet looked at in a real Java client.
+  Cobblemon Bedrock port (36000 files), and with that pack in a real Java 26.2 client through
+  Velocity: the pack loads, items and mobs show.
 * Skins of other players: looked up from a public skin API by XUID; offline Bedrock players have
   none, so they are Steve/Alex.
 * Java players' skins on Bedrock: the Java skin (textures property, else a Mojang name lookup;

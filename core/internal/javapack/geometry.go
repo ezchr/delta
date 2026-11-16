@@ -473,7 +473,7 @@ func modelJSON(els []element, tex string, texW, texH float64) map[string]any {
 				continue
 			}
 			faces[faceNames[i]] = map[string]any{
-				"uv":      []float64{r4(f.uv[0] * 16 / texW), r4(f.uv[1] * 16 / texH), r4(f.uv[2] * 16 / texW), r4(f.uv[3] * 16 / texH)},
+				"uv":      faceUV(f.uv, texW, texH),
 				"texture": "#0",
 			}
 		}
@@ -509,3 +509,27 @@ func modelJSON(els []element, tex string, texW, texH float64) map[string]any {
 }
 
 func r4(v float64) float64 { return math.Round(v*10000) / 10000 }
+
+// faceUV is a face's texture rectangle (texture pixels) as Java's 0..16 UV, kept inside the
+// texture. Bedrock draws a cube whose UV runs past the edge of its texture; a Java 26 client
+// refuses such a model ("Cannot compute translucency out of bounds") and with it the whole pack.
+func faceUV(uv [4]float64, texW, texH float64) []float64 {
+	u0, u1 := fitUV(uv[0], uv[2], texW)
+	v0, v1 := fitUV(uv[1], uv[3], texH)
+	return []float64{r4(u0 * 16 / texW), r4(v0 * 16 / texH), r4(u1 * 16 / texW), r4(v1 * 16 / texH)}
+}
+
+// fitUV brings the span a..b (either order) into 0..size: a span wholly outside wraps around,
+// as texture sampling does, and what still sticks out is cut off.
+func fitUV(a, b, size float64) (float64, float64) {
+	if size <= 0 {
+		return 0, 0
+	}
+	lo, hi := math.Min(a, b), math.Max(a, b)
+	if lo >= size || hi <= 0 {
+		shift := math.Floor(lo/size) * size
+		a, b = a-shift, b-shift
+	}
+	clamp := func(x float64) float64 { return math.Max(0, math.Min(size, x)) }
+	return clamp(a), clamp(b)
+}

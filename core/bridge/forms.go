@@ -78,6 +78,16 @@ func bedrockText(s string) text.Component { return text.Legacy(s, text.Bedrock) 
 
 // showForm shows a server form as a dialog.
 func (p *Player) showForm(pk *packet.ModalFormRequest) {
+	if p.packPending() {
+		// A dialog replaces the resource pack prompt, which the client takes as "No": the form
+		// waits until the player answered (packStatus), a server that opens one on join included.
+		held := *pk
+		held.FormData = append([]byte(nil), pk.FormData...)
+		if len(p.packs.heldForms) < 10 {
+			p.packs.heldForms = append(p.packs.heldForms, &held)
+		}
+		return
+	}
 	var bf bedrockForm
 	if err := json.Unmarshal(pk.FormData, &bf); err != nil {
 		p.log.Info("bad form from the server", "err", err)

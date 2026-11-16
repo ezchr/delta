@@ -82,6 +82,16 @@ where the code is, and how to test it.
   Cobblemon (36606). Sounds, structures and scripts are not read at all (`unusedFile`).
 - Reading a 290 MB pack folder takes about 15 s on the first Java login after a start (it is zipped
   in memory); later logins reuse it.
+- **A Java 26 client refuses a model whose face UV leaves its texture** ("Unable to bake model:
+  Cannot compute translucency out of bounds: [71, 62, 74, 62] in 64x64 image") and draws the
+  missing-model cube; the rest of the pack still loads. Bedrock geometry does this often (box UVs
+  past the edge). `faceUV`/`fitUV` in `internal/javapack/geometry.go` wrap a span that is wholly
+  outside and cut what sticks out. Only a real client shows this: the bot checks that JSON parses.
+- **A dialog (a server form) replaces the pack prompt screen.** Forms that arrive while the prompt is
+  pending wait (`packPending`, `heldForms` in `bridge/packs.go`) until the client answered, for two
+  minutes at most.
+- A client whose server list entry has "Server Resource Packs: Disabled" answers "declined" at once,
+  with no prompt: check the test client's `servers.dat` (`acceptTextures`) before blaming the bridge.
 - Test: a small retexture pack and a big add-on in a test world, the bot (`jbbot -packlist` logs
   the pack it is pushed, downloads it and checks its JSON), and a static check of the Java zip
   (resource paths, model parents, texture references).

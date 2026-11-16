@@ -495,10 +495,14 @@ func addPackLang(keys map[string]string) {
 
 // packState is the Java client's pack (p.mu).
 type packState struct {
-	sent   *javaPack // pushed last (nil: none)
-	url    string    // where the client was told to download it
-	status int32     // the client's last answer for it (-1: none yet)
-	failed bool      // declined or failed: item models are not used
+	sent *javaPack // pushed last (nil: none)
+	url  string    // where the client was told to download it
+	// heldForms are server forms that came while the pack prompt was up, shown after it
+	// (showForm); pushedAt is when the prompt was sent.
+	heldForms []*packet.ModalFormRequest
+	pushedAt  time.Time
+	status    int32 // the client's last answer for it (-1: none yet)
+	failed    bool  // declined or failed: item models are not used
 	// ents are the custom entities shown with a model, by runtime id (entities_custom.go).
 	ents map[uint64]*modelEntity
 }
@@ -515,6 +519,37 @@ const (
 	packDiscarded    = 7
 )
 
+// packPromptTimeout is how long forms wait for the player's answer to the pack prompt.
+const packPromptTimeout = 2 * time.Minute
+
+// packPending reports whether the client is about to get the pack prompt or has not finished
+// answering it (yes, then the download and the reload). p.mu is held.
+func (p *Player) packPending() bool {
+	if p.rem == nil || p.rem.jpack == nil {
+		return false
+	}
+	if p.packs.sent == nil || p.packs.sent.sha != p.rem.jpack.sha {
+		return true // packsTick pushes it on the next tick
+	}
+	if p.packs.failed || p.packs.url == "" {
+		return false
+	}
+	switch p.packs.status {
+	case -1, packAccepted, packDownloaded:
+		return time.Since(p.packs.pushedAt) < packPromptTimeout
+	}
+	return false
+}
+
+// showHeldForms shows the forms that waited for the pack prompt. p.mu is held.
+func (p *Player) showHeldForms() {
+	held := p.packs.heldForms
+	p.packs.heldForms = nil
+	for _, pk := range held {
+		p.showForm(pk)
+	}
+}
+
 // packsTick pushes the current server's pack when it differs from the client's: a new server
 // pops the old pack first. In the waiting area the client keeps what it has.
 func packsTick(p *Player) {
@@ -525,6 +560,9 @@ func packsTick(p *Player) {
 	cur := p.packs.sent
 	if want == cur || (want != nil && cur != nil && want.sha == cur.sha) {
 		p.packs.sent = want
+		if len(p.packs.heldForms) > 0 && !p.packPending() {
+			p.showHeldForms()
+		}
 		return
 	}
 	if cur != nil {
@@ -542,7 +580,7 @@ func packsTick(p *Player) {
 		p.packs.failed = true // nothing to download it from: items and blocks stay plain
 		return
 	}
-	p.packs.url = url
+	p.packs.url, p.packs.pushedAt = url, time.Now()
 	touchJavaPack(want.sha)
 	w := p.pk()
 	w.UUID(want.id)
@@ -566,6 +604,11 @@ func (p *Player) packStatus(id uuid.UUID, status int32) {
 		return
 	}
 	p.packs.status = status
+	defer func() {
+		if !p.packPending() {
+			p.showHeldForms()
+		}
+	}()
 	switch status {
 	case packLoaded:
 		p.log.Info("java client loaded the resource pack")
