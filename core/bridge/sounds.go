@@ -440,6 +440,19 @@ func (p *Player) levelSound(pk *packet.LevelSoundEvent) {
 	} else if t, ok := entityTypes[pk.EntityType]; ok && t.java != "" {
 		java = trimNS(t.java)
 	}
+	if _, known := entityTypes[pk.EntityType]; !known && pk.EntityType != "" && !strings.HasPrefix(pk.EntityType, "minecraft:") {
+		// A custom mob's own sounds are in the Bedrock pack, and sounds are not converted (they
+		// are most of a big pack's size). So that a hit is heard at all, hurt and death are the
+		// generic Java sounds; its other events (ambient, step, spawn) stay silent.
+		switch ev {
+		case "hurt":
+			p.sendSound("entity.generic.hurt", entitySource(java), pos, 1, 1)
+			return
+		case "death":
+			p.sendSound("entity.generic.death", entitySource(java), pos, 1, 1)
+			return
+		}
+	}
 	bp := blockPosOf(pos)
 
 	switch ev {

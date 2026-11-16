@@ -19,7 +19,7 @@ import (
 )
 
 // Version changes when the converter's output changes (part of the conversion cache key).
-const Version = 4
+const Version = 5
 
 // Java 26.3's resource pack format (version.json pack_version.resource_major/minor); 26.2 clients
 // (88) are in the range too.

@@ -520,6 +520,10 @@ type packState struct {
 	animTicks   uint64
 	animRankNow bool
 	animBundles int // open packet bundles (animBundle)
+	// fxTicks counts ticks for hurt flashes; aimed is the custom mob under the crosshair, by
+	// runtime id (entities_modelfx.go).
+	fxTicks uint64
+	aimed   uint64
 }
 
 // Java resource_pack statuses.

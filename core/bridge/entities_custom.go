@@ -41,6 +41,11 @@ type modelEntity struct {
 	w, h   float32    // Bedrock bounding box
 	script float32    // the entity file's scripts.scale (1: none)
 	anim   *modelAnim // nil: the model has no scripts (entities_anim.go)
+	// tintUntil is the tick (packState.fxTicks) the hurt flash ends at (0: not hurt); nameTag the
+	// Java id of the text display that shows its name while the player looks at it (0: none)
+	// (entities_modelfx.go).
+	tintUntil uint64
+	nameTag   int32
 }
 
 func init() {
@@ -192,6 +197,10 @@ func (p *Player) sendModelData(e *entity, me *modelEntity, full bool) {
 		}
 		js.ItemModel = me.m.Model
 		js.Add(jitem.CompItemModel)
+		if me.tintUntil != 0 {
+			tintStack(&js, me)
+			js.Add(jitem.CompCustomModelData)
+		}
 		js.EncodeFor(w, p.win.proto())
 	}
 	s := float32(me.m.Scale) * me.scale * me.script
@@ -237,6 +246,7 @@ func (p *Player) dropModelEntity(rid uint64) {
 	}
 	delete(p.packs.ents, rid)
 	p.dropAnimParts(p.ents.shown[rid], me)
+	p.hideAimName(me)
 	if me.hitbox == 0 {
 		return
 	}

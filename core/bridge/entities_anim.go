@@ -447,6 +447,7 @@ func (p *Player) animStart(e *entity, me *modelEntity, period int, full bool) {
 		js.ItemModel = mp.Model
 		js.Add(jitem.CompItemModel)
 		js.CustomModelData.Floats = append(js.CustomModelData.Floats[:0], float32(mp.Index))
+		tintStack(&js, me)
 		js.Add(jitem.CompCustomModelData)
 		js.EncodeFor(w, p.win.proto())
 		w.Byte(0xff)

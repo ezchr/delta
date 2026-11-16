@@ -164,10 +164,9 @@ func (b *builder) entities() {
 			continue
 		}
 		safe := b.safeName("entity", id)
+		tintFaces(o.whole)
 		b.json("assets/"+Namespace+"/models/entity/"+safe+".json", o.whole)
-		b.json("assets/"+Namespace+"/items/entity/"+safe+".json", map[string]any{
-			"model": map[string]any{"type": "minecraft:model", "model": Namespace + ":entity/" + safe},
-		})
+		b.json("assets/"+Namespace+"/items/entity/"+safe+".json", map[string]any{"model": tintedModel(Namespace + ":entity/" + safe)})
 		e := o.ent
 		e.Model = Namespace + ":entity/" + safe
 		e.Name = b.lang["entity."+id+".name"]
@@ -180,9 +179,9 @@ func (b *builder) entities() {
 			entries := make([]any, 0, len(o.plan))
 			for i := range o.plan {
 				name := fmt.Sprintf("entity/%s/p%d", safe, i)
+				tintFaces(o.parts[i])
 				b.json("assets/"+Namespace+"/models/"+name+".json", o.parts[i])
-				entries = append(entries, map[string]any{"threshold": i,
-					"model": map[string]any{"type": "minecraft:model", "model": Namespace + ":" + name}})
+				entries = append(entries, map[string]any{"threshold": i, "model": tintedModel(Namespace + ":" + name)})
 				o.plan[i].Model, o.plan[i].Index = Namespace+":"+item, i
 			}
 			if len(entries) > 0 {
@@ -421,4 +420,28 @@ func pick(m map[string]string) string {
 func hasElements(model map[string]any) bool {
 	l, _ := model["elements"].([]any)
 	return len(l) > 0
+}
+
+// Entity models can be coloured by the bridge (the red flash of a hurt mob): every face has
+// tint index 0, and the item definition takes that tint from the item's custom model data
+// (its first colour; white, which changes nothing, when the item has none).
+
+// tintFaces gives every face of a model made by modelJSON tint index 0.
+func tintFaces(model map[string]any) {
+	els, _ := model["elements"].([]any)
+	for _, el := range els {
+		m, _ := el.(map[string]any)
+		faces, _ := m["faces"].(map[string]any)
+		for _, f := range faces {
+			if fm, ok := f.(map[string]any); ok {
+				fm["tintindex"] = 0
+			}
+		}
+	}
+}
+
+// tintedModel is an item definition's model entry for a tintable model.
+func tintedModel(id string) map[string]any {
+	return map[string]any{"type": "minecraft:model", "model": id,
+		"tints": []any{map[string]any{"type": "minecraft:custom_model_data", "index": 0, "default": 16777215}}}
 }
