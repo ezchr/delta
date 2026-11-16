@@ -29,12 +29,56 @@ import (
 //     textures.go): a provider that points at the client's file, nothing is copied;
 //   - a few of the game's UI pictures that Java has a look-alike sprite of (uiSprites).
 //
-// Pictures that come out the same share a glyph. Glyph n has the character iconRune(n). The font is its own, so the characters mean nothing
-// else; they are kept in the basic plane because a string of a network NBT tag is Java's
-// modified UTF-8.
+// Pictures that come out the same share a glyph. Glyph n of the packs' textures has the
+// character iconRune(n) in IconFont. The font is its own, so the characters mean nothing else;
+// they are kept in the basic plane because a string of a network NBT tag is Java's modified
+// UTF-8.
+//
+// A client drops a WHOLE font when one of its providers cannot be loaded (FontManager's
+// UnresolvedBuilderBundle.resolve gives nothing when any builder was rejected), and every glyph
+// of it is the missing-glyph box then. A provider that points at a file of the client is
+// rejected when that client version has no such file. So:
+//
+//   - IconFont has the pack's own sheets only: nothing in it can be missing;
+//   - the client's textures are in fonts of their own, gameFontSize glyphs each (gameFont), so
+//     a file a client lacks costs that one font's glyphs and not the others';
+//   - only textures every supported client version has get a glyph (newJava are left out).
 
-// IconFont is the font of the form icons.
+// IconFont is the font of the form icons that are the packs' own textures.
 const IconFont = Namespace + ":icons"
+
+// gameFontSize is how many of the client's own textures one font has glyphs of.
+const gameFontSize = 64
+
+// gameFont is the font and the character of glyph i of the client's own textures.
+func gameFont(i int) (font string, c rune) {
+	return Namespace + ":game" + strconv.Itoa(i/gameFontSize), 0xE000 + rune(i%gameFontSize)
+}
+
+// newJava are the textures of javaTextureNames (Java 26.3) that a 26.2 client does not have: no
+// glyph, a font that names one is dropped whole by that client.
+var newJava = sync.OnceValue(func() map[string]bool {
+	m := map[string]bool{}
+	for _, n := range strings.Fields(`block/destroy_oit_stage_0 block/destroy_oit_stage_1 block/destroy_oit_stage_2
+block/destroy_oit_stage_3 block/destroy_oit_stage_4 block/destroy_oit_stage_5 block/destroy_oit_stage_6
+block/destroy_oit_stage_7 block/destroy_oit_stage_8 block/destroy_oit_stage_9 block/orange_poplar_leaves
+block/poplar_door_bottom block/poplar_door_top block/poplar_hanging_sign block/poplar_log block/poplar_log_top
+block/poplar_planks block/poplar_sapling block/poplar_shelf block/poplar_sign block/poplar_trapdoor
+block/red_poplar_leaves block/red_shrub block/shelf_mushroom_particle block/shelf_mushroom_stage0
+block/shelf_mushroom_stage1 block/straw_bed block/straw_bed_particle block/stripped_poplar_log
+block/stripped_poplar_log_top block/yellow_poplar_leaves item/abandoned_camp_map item/black_cushion
+item/blue_cushion item/brown_cushion item/buried_ancient_city_map item/buried_mineshaft_map
+item/buried_treasure_map item/buried_trial_chambers_map item/cyan_cushion item/desert_pyramid_map
+item/desert_village_map item/gray_cushion item/green_cushion item/jungle_pyramid_map item/light_blue_cushion
+item/light_gray_cushion item/lime_cushion item/magenta_cushion item/ocean_monument_map item/orange_cushion
+item/pink_cushion item/plains_village_map item/poplar_boat item/poplar_chest_boat item/poplar_door
+item/poplar_hanging_sign item/poplar_sign item/purple_cushion item/red_cushion item/savanna_village_map
+item/snowy_village_map item/swamp_hut_map item/taiga_village_map item/warm_ocean_ruins_map item/white_cushion
+item/woodland_mansion_map item/yellow_cushion`) {
+		m[n] = true
+	}
+	return m
+})
 
 const (
 	// iconCell is a glyph's size, in the sheets and on the screen. A button is 20 pixels high
@@ -115,13 +159,14 @@ var uiSprites = map[string]string{
 	"warningglyph": "gui/sprites/world_list/warning", "errorglyph": "gui/sprites/world_list/error",
 }
 
-// vanillaIconFiles are the client's own textures the font has a glyph of, in glyph order: glyph
-// i is file i. The packs' glyphs come after them.
+// vanillaIconFiles are the client's own textures that have a glyph, in glyph order: glyph i
+// (gameFont) is file i. Every one is a file of every supported client version (26.2 and 26.3:
+// the sprites of uiSprites are in both).
 var vanillaIconFiles = sync.OnceValue(func() []string {
 	var out []string
-	tall := tallJava()
+	tall, newer := tallJava(), newJava()
 	for _, n := range strings.Fields(javaTextureNames) {
-		if !tall[n] {
+		if !tall[n] && !newer[n] {
 			out = append(out, n)
 		}
 	}
@@ -156,7 +201,7 @@ func iconKey(p string) string {
 }
 
 // vanillaIcon is the glyph of one of the game's own textures by its Bedrock path (an iconKey).
-func vanillaIcon(key string) (rune, bool) {
+func vanillaIcon(key string) (string, rune, bool) {
 	var file string
 	if rel, ok := strings.CutPrefix(key, "textures/items/"); ok {
 		file, _ = javaTextureFor("item", rel)
@@ -170,24 +215,25 @@ func vanillaIcon(key string) (rune, bool) {
 		}
 	}
 	if file == "" {
-		return 0, false
+		return "", 0, false
 	}
 	n, ok := vanillaIconIndex()[file]
 	if !ok {
-		return 0, false
+		return "", 0, false
 	}
-	return iconRune(n)
+	font, c := gameFont(n)
+	return font, c, true
 }
 
-// Icon is the character of the icon font (IconFont) that draws the texture a form names with
-// path; false when the pack has no glyph of it.
-func (r *Result) Icon(path string) (rune, bool) {
+// Icon is the font and the character that draw the texture a form names with path; false when
+// the pack has no glyph of it.
+func (r *Result) Icon(path string) (font string, c rune, ok bool) {
 	if r == nil || !r.HasIcons {
-		return 0, false
+		return "", 0, false
 	}
 	key := iconKey(path)
 	if c, ok := r.FormIcons[key]; ok {
-		return c, true
+		return IconFont, c, true
 	}
 	return vanillaIcon(key)
 }
@@ -213,7 +259,8 @@ func iconTexture(name string) (key string, tga, ok bool) {
 	return iconKey(name), tga, true
 }
 
-// formIcons writes the icon font: the sheets of the packs' textures and the font file.
+// formIcons writes the icon fonts: the sheets of the packs' textures and their font, and the
+// fonts of the client's own textures.
 func (b *builder) formIcons() {
 	type source struct {
 		data []byte
@@ -261,7 +308,6 @@ func (b *builder) formIcons() {
 	close(next)
 	wg.Wait()
 
-	vanilla := vanillaIconFiles()
 	type provider struct {
 		Type   string   `json:"type"`
 		File   string   `json:"file"`
@@ -295,7 +341,7 @@ func (b *builder) formIcons() {
 		}
 		sheet, rows = nil, nil
 	}
-	n, glyphs := len(vanilla), 0
+	n, glyphs := 0, 0
 	same := map[string]rune{}
 	for i, key := range keys {
 		if cells[i] == nil {
@@ -330,13 +376,23 @@ func (b *builder) formIcons() {
 		}
 	}
 	flush()
-	for i, f := range vanilla {
-		c, _ := iconRune(i)
-		providers = append(providers, provider{Type: "bitmap", File: "minecraft:" + f + ".png", Height: iconCell, Ascent: iconAscent,
+	fontFile := func(font string, providers []provider) {
+		if len(providers) == 0 {
+			return // a font file needs none to be no font at all
+		}
+		data, _ := json.Marshal(map[string]any{"providers": providers})
+		b.files["assets/"+Namespace+"/font/"+strings.TrimPrefix(font, Namespace+":")+".json"] = data
+	}
+	fontFile(IconFont, providers)
+	game := map[string][]provider{}
+	for i, f := range vanillaIconFiles() {
+		font, c := gameFont(i)
+		game[font] = append(game[font], provider{Type: "bitmap", File: "minecraft:" + f + ".png", Height: iconCell, Ascent: iconAscent,
 			Chars: []string{string(c)}})
 	}
-	data, _ := json.Marshal(map[string]any{"providers": providers})
-	b.files["assets/"+Namespace+"/font/icons.json"] = data
+	for font, providers := range game {
+		fontFile(font, providers)
+	}
 	b.res.FormIcons, b.res.HasIcons = icons, true
 	b.res.Stats.FormIcons, b.res.Stats.IconGlyphs = len(icons), glyphs
 }

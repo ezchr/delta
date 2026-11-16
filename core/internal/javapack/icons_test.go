@@ -83,28 +83,39 @@ func TestFormIcons(t *testing.T) {
 
 	// Lookups: the pack's own (and its own diamond before the game's), the game's by Bedrock
 	// names, nothing for what neither has.
-	sword, ok := res.Icon("textures/ui/shop/Sword.png")
-	if !ok || sword != res.FormIcons["textures/ui/shop/sword"] {
-		t.Errorf("sword: %U %v", sword, ok)
+	type glyph struct {
+		font string
+		c    rune
 	}
-	if c, ok := res.Icon("textures/items/diamond"); !ok || c != res.FormIcons["textures/items/diamond"] {
-		t.Errorf("the pack's diamond: %U %v", c, ok)
+	icon := func(p string) glyph {
+		font, c, ok := res.Icon(p)
+		if !ok {
+			t.Errorf("no glyph of %s", p)
+		}
+		return glyph{font, c}
 	}
-	apple, ok := res.Icon("textures/items/apple")
-	if !ok || seen[apple] != "" {
-		t.Errorf("apple: %U %v", apple, ok)
+	sword := icon("textures/ui/shop/Sword.png")
+	if sword != (glyph{IconFont, res.FormIcons["textures/ui/shop/sword"]}) {
+		t.Errorf("sword: %v", sword)
 	}
-	planks, ok := res.Icon("textures/blocks/planks_oak.png")
-	if !ok {
-		t.Error("no glyph of planks_oak")
+	if d := icon("textures/items/diamond"); d != sword {
+		t.Errorf("the pack's diamond: %v", d)
 	}
-	check, ok := res.Icon("textures/ui/check")
-	if !ok {
-		t.Error("no glyph of textures/ui/check")
+	apple, planks, check := icon("textures/items/apple"), icon("textures/blocks/planks_oak.png"), icon("textures/ui/check")
+	if apple.font == IconFont || planks.font == IconFont || check.font == IconFont {
+		t.Errorf("the client's textures in the pack's font: %v %v %v", apple, planks, check)
 	}
-	for _, p := range []string{"textures/ui/nothing_like_it", "textures/blocks/lava_still", "textures/entity/skin", "", "https://example.com/a.png"} {
-		if c, ok := res.Icon(p); ok {
+	// Nothing for what neither has, for a strip of the client's, and for a texture a 26.2 client
+	// lacks (a font that names a missing file is dropped whole by the client).
+	for _, p := range []string{"textures/ui/nothing_like_it", "textures/blocks/lava_still", "textures/entity/skin", "",
+		"https://example.com/a.png", "textures/items/white_cushion", "textures/blocks/poplar_planks"} {
+		if _, c, ok := res.Icon(p); ok {
 			t.Errorf("%q has a glyph %U", p, c)
+		}
+	}
+	for _, f := range vanillaIconFiles() {
+		if newJava()[f] || tallJava()[f] {
+			t.Errorf("%s has a glyph", f)
 		}
 	}
 
@@ -121,32 +132,59 @@ func TestFormIcons(t *testing.T) {
 		rc.Close()
 		files[f.Name] = buf.Bytes()
 	}
-	var font struct {
-		Providers []struct {
-			Type, File     string
-			Height, Ascent int
-			Chars          []string
+	// The font files: every glyph has a provider. The pack's font has its own sheets only; the
+	// client's files are in fonts of their own, a few each.
+	fileOf := map[glyph]string{}
+	fonts := 0
+	for name, data := range files {
+		id, ok := strings.CutPrefix(name, "assets/delta/font/")
+		if !ok {
+			continue
 		}
-	}
-	if err := json.Unmarshal(files["assets/delta/font/icons.json"], &font); err != nil {
-		t.Fatal(err)
-	}
-	fileOf := map[rune]string{}
-	for _, p := range font.Providers {
-		if p.Type != "bitmap" || p.Height != 16 || p.Ascent != 12 || len(p.Chars) == 0 {
-			t.Fatalf("provider %+v", p)
-		}
-		n := len([]rune(p.Chars[0]))
-		for _, row := range p.Chars {
-			if len([]rune(row)) != n {
-				t.Fatalf("%s: rows of different lengths", p.File)
+		fonts++
+		id = "delta:" + strings.TrimSuffix(id, ".json")
+		var font struct {
+			Providers []struct {
+				Type, File     string
+				Height, Ascent int
+				Chars          []string
 			}
-			for _, c := range row {
-				if c != 0 {
-					fileOf[c] = p.File
+		}
+		if err := json.Unmarshal(data, &font); err != nil {
+			t.Fatal(err)
+		}
+		if len(font.Providers) == 0 || (id != IconFont && len(font.Providers) > gameFontSize) {
+			t.Errorf("%s has %d providers", id, len(font.Providers))
+		}
+		for _, p := range font.Providers {
+			if p.Type != "bitmap" || p.Height != 16 || p.Ascent != 12 || len(p.Chars) == 0 {
+				t.Fatalf("provider %+v", p)
+			}
+			if own := strings.HasPrefix(p.File, "delta:"); own != (id == IconFont) {
+				t.Errorf("%s names %s", id, p.File)
+			}
+			if _, ok := files["assets/delta/textures/"+strings.TrimPrefix(p.File, "delta:")]; id == IconFont && !ok {
+				t.Errorf("%s is not in the pack", p.File)
+			}
+			n := len([]rune(p.Chars[0]))
+			for _, row := range p.Chars {
+				if len([]rune(row)) != n {
+					t.Fatalf("%s: rows of different lengths", p.File)
+				}
+				for _, c := range row {
+					if c == 0 {
+						continue
+					}
+					if fileOf[glyph{id, c}] != "" {
+						t.Errorf("%s %U twice", id, c)
+					}
+					fileOf[glyph{id, c}] = p.File
 				}
 			}
 		}
+	}
+	if want := 1 + (len(vanillaIconFiles())+gameFontSize-1)/gameFontSize; fonts != want {
+		t.Errorf("%d fonts, want %d", fonts, want)
 	}
 	if fileOf[apple] != "minecraft:item/apple.png" || fileOf[planks] != "minecraft:block/oak_planks.png" ||
 		fileOf[check] != "minecraft:gui/sprites/icon/checkmark.png" {
@@ -169,7 +207,7 @@ func TestFormIcons(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, ok := off.Icon("textures/items/apple"); ok || len(off.FormIcons) != 0 || off.HasIcons {
+	if _, _, ok := off.Icon("textures/items/apple"); ok || len(off.FormIcons) != 0 || off.HasIcons {
 		t.Error("icons without the option")
 	}
 }

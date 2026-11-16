@@ -29,8 +29,8 @@ import (
 // the button plus the input values; the client sends it back as custom_click_action and the
 // bridge answers the server's form with ModalFormResponse. Cancel or Escape answers it as closed.
 //
-// A button's picture ("image": a texture path) is a glyph of the converted pack's icon font
-// (javapack/icons.go) before the label, when the client has that pack and the font has the
+// A button's picture ("image": a texture path) is a glyph of one of the converted pack's icon
+// fonts (javapack/icons.go) before the label, when the client has that pack and the font has the
 // texture; else the label is as it was. A picture from a URL is not shown: a dialog draws text
 // and items, and the pack is made and loaded before a form names its pictures.
 //
@@ -90,35 +90,36 @@ func (p *Player) formScreen(title string) *javapack.FormScreen {
 // show their pictures.
 var formIconsOn = true
 
-// formButton is a button as the dialog shows it: its label and its picture's glyph in the icon
-// font (0: none).
+// formButton is a button as the dialog shows it: its label and its picture's glyph (0: none) in
+// an icon font.
 type formButton struct {
 	label string
+	font  string
 	icon  rune
 }
 
 // formIcon is the glyph of a button's picture, 0 when it cannot be shown: no picture or one from
 // a URL, a texture the pack's font has not, or a client that did not load the pack. p.mu is held.
-func (p *Player) formIcon(img formImage) rune {
+func (p *Player) formIcon(img formImage) (font string, icon rune) {
 	if !formIconsOn || img.Data == "" || strings.EqualFold(img.Type, "url") {
-		return 0
+		return "", 0
 	}
 	jp := p.packFor()
 	if jp == nil || p.packs.sent == nil || p.packs.sent.sha != jp.sha || p.packs.status != packLoaded {
-		return 0
+		return "", 0
 	}
-	c, _ := jp.res.Icon(img.Data)
-	return c
+	font, icon, _ = jp.res.Icon(img.Data)
+	return font, icon
 }
 
-// iconLabel is a button's label with its picture before it.
-func iconLabel(label text.Component, icon rune) text.Component {
-	if icon == 0 {
+// iconLabel is a button's label with its picture, glyph icon of font, before it.
+func iconLabel(label text.Component, font string, icon rune) text.Component {
+	if icon == 0 || font == "" {
 		return label
 	}
 	// White: the glyph is the picture's own colours whatever the label's colour is.
 	return text.Component{Extra: []text.Component{
-		{Text: string(icon), Font: javapack.IconFont, Color: "white"}, {Text: " "}, label}}
+		{Text: string(icon), Font: font, Color: "white"}, {Text: " "}, label}}
 }
 
 // A plain menu with this many buttons or more goes in two columns when every label fits half
@@ -249,7 +250,8 @@ func (p *Player) showForm(pk *packet.ModalFormRequest) {
 		for _, e := range elems {
 			switch e.Type {
 			case "", "button":
-				buttons = append(buttons, formButton{string(e.Text), p.formIcon(e.Image)})
+				font, icon := p.formIcon(e.Image)
+				buttons = append(buttons, formButton{string(e.Text), font, icon})
 			case "label", "header":
 				body = appendBody(body, string(e.Text))
 			}
@@ -283,7 +285,7 @@ func (p *Player) showForm(pk *packet.ModalFormRequest) {
 			if buttonIndex != nil {
 				n = buttonIndex[i]
 			}
-			writeButtonWidth(w, iconLabel(labelText(b.label), b.icon), id, n, width)
+			writeButtonWidth(w, iconLabel(labelText(b.label), b.font, b.icon), id, n, width)
 		}
 	}
 	if bf.Type == "modal" {

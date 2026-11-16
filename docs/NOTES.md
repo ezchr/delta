@@ -600,8 +600,23 @@ What a Java client does by itself for a living mob, and cannot for one drawn wit
   baseline is 13 below its top, so the picture sits in the middle. The characters are the
   private use area, then the CJK and Hangul blocks (38500 glyphs; the font is its own, so they
   mean nothing else). All in the basic plane: a string in network NBT is Java's modified UTF-8.
-  A client reads each provider on its own, so a texture a client version lacks loses that one
-  glyph only (as the client's code read before; not tried with a file that is missing).
+- **One provider that fails takes the whole font with it.** The first build had the packs'
+  sheets and 2100 providers for the client's textures in one font, and a 26.2 client drew every
+  icon as the empty box of a missing glyph, the packs' own too. Its log had 68 `Failed to load
+  builder (delta:icons: builder #N ...), rejecting` with `FileNotFoundException`, one for each
+  texture of the list (made from 26.3) that 26.2 does not have (`poplar_*`, `*_cushion`, the
+  structure maps, `destroy_oit_stage_N`...). The log line reads as if one builder were lost; the
+  client's `FontManager$UnresolvedBuilderBundle.resolve` gives no providers at all for a font
+  when any of its builders was rejected (read in the 26.3 client's bytecode). The text
+  component was not the cause: `font` is written the same for every client version (only packet
+  ids differ between 26.2 and 26.3).
+  So: `delta:icons` has the packs' own sheets only, files that are in the pack. The client's
+  textures are in fonts of their own, 64 glyphs each (`delta:game0`...), and a file a client
+  lacks can cost those 64 at most. And only textures that both 26.2 and 26.3 have get a glyph
+  (`newJava` in `icons.go` is the list of the 68 left out, from comparing the two client jars'
+  texture lists; the look-alike sprites are in both). **A new client version needs that
+  comparison again**: every `"file": "minecraft:..."` of the fonts must be a file of every
+  version that can join.
 - **No glyph, plain label.** A URL picture (a dialog cannot draw a web picture; downloading
   it on the server and adding it to the pack would again be a pack sent in the middle of a
   menu), a texture the font has not, a client that declined or could not load the pack, a
@@ -613,7 +628,7 @@ What a Java client does by itself for a living mob, and cannot for one drawn wit
   before every "Kanto 2", and the wider buttons made the 3 x 3 grid two columns.
 - **Cost, measured** on the Pokemon add-on's pack (36000 files, 13000 textures outside the
   folders left out): 12000 textures with a glyph, 10000 glyphs after sharing, 40 sheets, 2.6 MB;
-  the font file with its 2100 providers for the game's textures is 250 KB, 41 KB in the zip.
+  the 33 font files with 2100 providers for the game's textures are 250 KB, about 45 KB in the zip.
   The converted pack went from 25.5 to 28.2 MB (10 %), the conversion from 10 to 13 s (the
   textures are read on all cores). The pictures at 32 pixels would be about four times the
   sheets. A client keeps the sheets in memory (256 KB each).
@@ -627,10 +642,14 @@ What a Java client does by itself for a living mob, and cannot for one drawn wit
   order reads left to right, then down.
 - Test: `iconlive.sh` opens a script's menu with pictures of the game, of two packs, a URL and
   an unknown path for the bot, which takes the pack. The bot prints a glyph as `U+XXXX`:
-  `label extra color white text U+E5F2 font delta:icons Diamond`, `label Web` for the URL.
-  `iconrender.py` draws glyphs of a converted pack as mock buttons (the client's own textures
-  from a client jar). Not looked at in a real client: where the glyph sits in the button, its
-  shadow, and how a button with a long label scrolls beside it.
+  `label extra color white text U+E008 font delta:game23 Diamond`, `label Web` for the URL.
+  `iconcheck.py` reads a converted pack's fonts as a client does: every provider of every font
+  must name a file of the pack or of every client given (a client jar or a list of a client's
+  textures), else that client drops the font; it says which font and why (it names the first
+  build's `delta:icons` as dropped by 26.2). It also draws glyphs as mock buttons.
+- Seen in a real client: the first build's boxes (above) and that two columns look right. Not
+  looked at in a real client since the fonts were split: the icons themselves, where a glyph
+  sits in the button, its shadow, and how a button with a long label scrolls beside it.
 
 ## Books
 

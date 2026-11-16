@@ -12,7 +12,7 @@ func TestMenuColumns(t *testing.T) {
 	menu := func(n int, label string, icon rune) []formButton {
 		var out []formButton
 		for i := 0; i < n; i++ {
-			out = append(out, formButton{label, icon})
+			out = append(out, formButton{label, "f", icon})
 		}
 		return out
 	}
@@ -39,10 +39,10 @@ func TestMenuColumns(t *testing.T) {
 // and a button without one keeps its label as it was.
 func TestIconLabel(t *testing.T) {
 	plain := labelText("§aShop")
-	if got := iconLabel(plain, 0); len(got.Extra) != len(plain.Extra) || got.Text != plain.Text || got.Font != "" {
+	if got := iconLabel(plain, javapack.IconFont, 0); len(got.Extra) != len(plain.Extra) || got.Text != plain.Text || got.Font != "" {
 		t.Errorf("no icon: %+v", got)
 	}
-	got := iconLabel(plain, 0xE123)
+	got := iconLabel(plain, javapack.IconFont, 0xE123)
 	if len(got.Extra) != 3 || got.Extra[0].Text != "" || got.Extra[0].Font != javapack.IconFont ||
 		got.Extra[0].Color != "white" || got.Extra[1].Text != " " || got.Extra[1].Font != "" {
 		t.Errorf("icon: %+v", got)
