@@ -127,6 +127,37 @@ where the code is, and how to test it.
 - Code: `bridge/inventory.go` (`click`, `plan`, `responses`, `refused`, `openInventory`),
   `bridge/windows.go` (ContainerOpen/ContainerClose). Tests: `bridge/inventory_quickmove_test.go`.
 
+## Sleeping
+
+- **BDS puts a sleeper at the bed's head block + (0.5, 0.90625, 0.5)**, and that is the player's
+  eye position: while asleep its box is 0.2 x 0.2 with the eyes 0.2 above the feet
+  (`Player::startSleepInBed`, 1.21.3 dump; 1.26.60 sends the same numbers). It sets the SLEEPING
+  flag (flags 2, not flags 1), the bed position (actor data 28: the head block; it is also the
+  spawn bed, so it is only re-sent when it changes) and the respawn point, and tells the
+  sleeper's own client with a CorrectPlayerMovePrediction, not a MovePlayer.
+- Translating that position like any other (eyes minus 1.62) put the Java player 0.71 below the
+  bed block, inside the floor: the client fell, the bridge sent the fall to BDS, BDS corrected it
+  back, and so on for as long as the player lay there ("falling through the bed").
+- **A Java client lies in its bed by itself** once its own entity data has `sleeping_pos` (14) and
+  the block there is a bed on the client (`LivingEntity.setPosToBed`: the bed's top + 0.125, then
+  it falls onto the top, 0.5625). It takes no input then and opens the bed screen; "Leave Bed" and
+  escape send `player_command` STOP_SLEEPING (action 0 on 26.2 and 26.3). So the bridge sends that
+  data, never moves the client to the server's sleeping position, and sends BDS inputs at BDS's
+  own position with no movement until the flag goes.
+- A Bedrock client sends PlayerAction StartSleeping once it is in bed (BDS answers with "X is
+  sleeping in a bed..." to the others) and StopSleeping to get up. On waking (the button,
+  morning, `/time set day`) BDS clears the flag, animates StopSleep and puts the player next to
+  the bed (eyes 1.72 above the block) with a correction; the bridge sends WAKE_UP (animate 0 on
+  26.3, 2 on 26.2: the client casts the entity to a player) and teleports the client there.
+- Other sleeping players: a Java client draws them lying at their position, so the bridge places
+  them on the bed's top (BDS's y minus 0.34375 instead of 1.62; AddPlayer has the feet, 0.2 under
+  that), and moves them again when the flag changes, whichever comes first.
+- Bed messages (night only, monsters, too far, home bed missing, respawn point set) come as Text
+  rawtext and show in chat, as on Bedrock.
+- Code: `bridge/sleep.go`; tests `TestSleepSelf`, `TestSleepOtherPlayer`. Live: jbbot `useon` on a
+  bed at night, `sleepstat`, `wake` (`SLEEP` and `SELF` lines); a second bot logs the sleeper's
+  `ENT data` (6=2, 14=bed).
+
 ## jbbot (scripted Java client)
 
 - Build: `cd core && go build -o jbbot ./cmd/jbbot`. Run: `jbbot -addr HOST:PORT -name NAME
@@ -139,6 +170,8 @@ where the code is, and how to test it.
   does, armour and shield rules included), `qclick` (the same without waiting for the answer),
   `burst S1 S2 ...` (shift-clicks back to back, like a shift-double-click), `inv`, `close`, `hold N`,
   `useon X Y Z FACE`, `expectslot`. `ents` lists entities; adds and leads are logged as `ENT`.
+- Sleep steps: `wake` (Leave Bed), `sleepstat`; the bot lies in a bed as a 26.3 client does when
+  its own entity data says so (`sleep.go`).
 - The bot is not an operator: give items and effects from the server console. On a flat world at
   night mobs push it around; give it resistance and teleport it somewhere quiet (or onto a platform)
   before clicking blocks.
