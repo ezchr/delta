@@ -242,9 +242,8 @@ func (r *Rig) Animated() bool { return r != nil && len(r.animate) > 0 }
 // Inputs is what is known about an entity when its animation is stepped.
 type Inputs struct {
 	OnGround, InWater bool
-	// GroundSpeed and VerticalSpeed are in blocks per second; Distance is the horizontal
-	// distance moved so far, in blocks.
-	GroundSpeed, VerticalSpeed, Distance float64
+	// GroundSpeed and VerticalSpeed are in blocks per second.
+	GroundSpeed, VerticalSpeed float64
 	// HeadYaw (relative to the body) and HeadPitch, degrees.
 	HeadYaw, HeadPitch float64
 	BodyYaw            float64
@@ -269,6 +268,7 @@ type State struct {
 	acc     []boneAcc
 	glob    []Xform
 	dt      float64
+	swing   float64 // q.modified_distance_moved
 	// cur is the controller state whose transitions are being evaluated (for
 	// q.all_animations_finished).
 	cur *cstate
@@ -311,10 +311,9 @@ func (s *State) Query(q molang.Query, args []float64) float64 {
 	case molang.QVerticalSpeed:
 		return in.VerticalSpeed
 	case molang.QModifiedMoveSpeed:
-		// The walk animation speed: 1 at about a walking pace (4 blocks per second).
-		return min(1.5, in.GroundSpeed/4)
+		return swingSpeed(in.GroundSpeed)
 	case molang.QModifiedDistanceMoved, molang.QWalkDistance:
-		return in.Distance
+		return s.swing
 	case molang.QTargetXRotation:
 		return in.HeadPitch
 	case molang.QTargetYRotation:
@@ -401,6 +400,7 @@ func (s *State) Step(dt float64) {
 	} else {
 		s.env.LifeTime += dt
 	}
+	s.swing += swingSpeed(s.In.GroundSpeed) * 20 * dt
 	for _, x := range r.pre {
 		x.Eval(s.env)
 	}
@@ -609,4 +609,12 @@ func (s *State) Local(i int) (rot, pos, scale [3]float64) {
 		return rot, pos, [3]float64{1, 1, 1}
 	}
 	return s.acc[i].rot, s.acc[i].pos, s.acc[i].scale
+}
+
+// swingSpeed is q.modified_move_speed for a ground speed in blocks per second: how far the legs
+// swing, the game's walk animation speed (four times the blocks moved in a tick, at most 1).
+// q.modified_distance_moved grows by it every tick, so vanilla-style walks (cos(distance *
+// 38.17) * speed * 80) step once per 9.4 ticks at full swing.
+func swingSpeed(groundSpeed float64) float64 {
+	return max(0, min(1, groundSpeed/5))
 }

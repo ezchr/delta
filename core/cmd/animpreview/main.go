@@ -84,8 +84,8 @@ func main() {
 		fail(err)
 	}
 	st := res.Stats
-	fmt.Printf("converted in %v: %d entities, %d animated with %d part models, %d bytes of animations kept, zip %d bytes\n",
-		time.Since(start).Round(time.Millisecond), st.Entities, st.Animated, st.Parts, st.AnimBytes, len(res.Zip))
+	fmt.Printf("converted in %v (entities %v): %d entities, %d animated with %d part models, %d bytes of animations kept, zip %d bytes\n",
+		time.Since(start).Round(time.Millisecond), st.EntitiesTook.Round(time.Millisecond), st.Entities, st.Animated, st.Parts, st.AnimBytes, len(res.Zip))
 	for _, m := range st.Missing {
 		fmt.Println("  not converted:", m)
 	}
@@ -309,8 +309,6 @@ func sheet(packs []*javapack.Source, z zipFS, res *javapack.Result, id, preset s
 	sf, sr := full.NewState(1), rig.NewState(1)
 	sf.In, sr.In = in, in
 	advance := func(dt float64) {
-		sf.In.Distance += in.GroundSpeed * dt
-		sr.In.Distance = sf.In.Distance
 		sf.Step(dt)
 		sr.Step(dt)
 	}

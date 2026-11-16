@@ -76,7 +76,6 @@ type modelAnim struct {
 	// Movement since the last step, for the speed queries.
 	lastPos  [3]float64
 	hasPos   bool
-	dist     float64
 	pitch    float32 // the head pitch Bedrock sent (the display itself is kept level)
 	sentYaw  byte
 	playing  string
@@ -132,7 +131,6 @@ func (p *Player) animInputs(e *entity, a *modelAnim, dt float64) {
 		if h > 16 { // a teleport, not a walk
 			h, dy = 0, 0
 		}
-		a.dist += h
 		// Half of the last value stays: positions come in bursts, and a pack's "is it moving"
 		// threshold should not flicker with them.
 		in.GroundSpeed = (in.GroundSpeed + h/dt) / 2
@@ -147,7 +145,6 @@ func (p *Player) animInputs(e *entity, a *modelAnim, dt float64) {
 		in.GroundSpeed, in.VerticalSpeed = 0, 0
 	}
 	a.lastPos, a.hasPos = pos, true
-	in.Distance = a.dist
 	in.OnGround = e.onGround
 	in.InWater = p.inWater(e.pos)
 	in.BodyYaw = float64(e.yaw)

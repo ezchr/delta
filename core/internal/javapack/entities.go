@@ -270,18 +270,13 @@ func buildEntity(o *entityOut, lib *anim.Library, maxParts int) {
 		}
 	}()
 	for _, pp := range plan.Parts {
-		root, piv := anim.IdentX, [3]float64{}
+		var piv [3]float64
 		if pp.Bone >= 0 {
-			root = plan.Ref[pp.Bone]
 			piv = [3]float64{-g.bones[pp.Bone].Pivot[0], g.bones[pp.Bone].Pivot[1], g.bones[pp.Bone].Pivot[2]}
 		}
 		var pels []element
-		for _, m := range pp.Members {
-			rel, ok := anim.Rel(root, plan.Ref[m])
-			if !ok {
-				continue
-			}
-			t, ok := toAffine(rel)
+		for j, m := range pp.Members {
+			t, ok := toAffine(pp.Rel[j])
 			if !ok {
 				continue
 			}
