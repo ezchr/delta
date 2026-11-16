@@ -153,9 +153,9 @@ func TestSprintEndsWhenCrouching(t *testing.T) {
 	}
 }
 
-// TestSprintStopOnLanding: BDS ignores a sprint stop in the air, so a Java client that stops
-// sprinting in the air (it ran into a block side) is reported sprinting until its first input on
-// the ground, which carries the stop.
+// TestSprintStopOnLanding: BDS ignores a sprint stop in an input that starts in the air, so a
+// Java client that stops sprinting in the air (it ran into a block side) is reported sprinting
+// until an input that starts on the ground, which carries the stop.
 func TestSprintStopOnLanding(t *testing.T) {
 	p, take := movePlayer(t)
 	javaIn(t, p, v777.ServerboundPlayPlayerCommand, func(w *wire.Writer) { w.VarInt(SelfEntityID); w.VarInt(1); w.VarInt(0) })
@@ -172,12 +172,16 @@ func TestSprintStopOnLanding(t *testing.T) {
 		}
 	}
 	tick(t, p, keyForward|keyJump, mgl64.Vec3{0.5, 64, 0.8}, 0, 0, true)
-	if in := take()[0]; !in.InputData.Load(packet.InputFlagStopSprinting) || in.InputData.Load(packet.InputFlagSprinting) {
-		t.Error("landing: no StopSprinting")
+	if in := take()[0]; !in.InputData.Load(packet.InputFlagSprinting) {
+		t.Error("landing input (starts in the air): sprint stop already told")
 	}
 	tick(t, p, keyForward|keyJump, mgl64.Vec3{0.5, 64.42, 0.8}, 0, 0, false)
+	if in := take()[0]; !in.InputData.Load(packet.InputFlagStopSprinting) || in.InputData.Load(packet.InputFlagSprinting) {
+		t.Error("the input after the landing (the hop): no StopSprinting")
+	}
+	tick(t, p, keyForward|keyJump, mgl64.Vec3{0.5, 64.7, 0.8}, 0, 0, false)
 	if in := take()[0]; in.InputData.Load(packet.InputFlagStopSprinting) || in.InputData.Load(packet.InputFlagSprinting) {
-		t.Error("after landing: sprint flags again")
+		t.Error("after the stop: sprint flags again")
 	}
 }
 

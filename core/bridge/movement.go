@@ -438,6 +438,7 @@ func (p *Player) sendInput() {
 	r := p.rem
 	m.lastInput = time.Now()
 	flags := protocol.NewInputFlags(packet.InputFlagCount)
+	prevGround := m.wasOnGround // the server's player is on the ground as this input starts
 	pos := m.pos
 	if m.sjTick != 0 && m.tick >= m.sjTick+sprintJumpWait {
 		m.sjTick = 0 // no word from the server: leave it to its correction
@@ -555,13 +556,14 @@ func (p *Player) sendInput() {
 		flags.Set(packet.InputFlagWantDownSlow)
 	}
 	sprinting := m.sprinting
-	if !sprinting && m.wasSprinting && m.srvSprint && !m.onGround {
+	if !sprinting && m.wasSprinting && m.srvSprint && !prevGround {
 		// The Java client stops sprinting when it runs into the side of a block (not when it
-		// only grazes it), often in the air. BDS ignores a sprint stop that comes while the
-		// player is in the air and sprints on (sprint speed, the next jump's boost: 0.3-0.9
-		// blocks off within a jump, the stutter at block corners), and a StopSprinting sent
-		// again later does not count either. So the server is told the sprint goes on until
-		// the first input on the ground, where the stop counts.
+		// only grazes it), in the air or as it lands. BDS ignores a sprint stop in an input
+		// that starts with the player in the air (the landing input too) and sprints on
+		// (sprint speed, the next jump's boost: 0.3-0.9 blocks off within a jump, the stutter
+		// at block corners), and a StopSprinting sent again later does not count either. So
+		// the server is told the sprint goes on until an input that starts on the ground (the
+		// one after the landing, a hop's jump input too), where the stop counts.
 		sprinting = true
 	}
 	if sprinting {
