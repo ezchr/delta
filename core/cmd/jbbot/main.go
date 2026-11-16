@@ -76,6 +76,7 @@ func loadBlocks(file string) {
 		return
 	}
 	solidState = make([]bool, jchunk.VanillaBlockStates)
+	bedState = make([]bool, jchunk.VanillaBlockStates)
 	soft := []string{"water", "lava", "short_grass", "tall_grass", "fern", "flower", "dandelion", "poppy", "orchid",
 		"allium", "tulip", "daisy", "cornflower", "lily_of_the_valley", "rose_bush", "peony", "lilac", "bush", "sapling",
 		"torch", "vine", "kelp", "seagrass", "sugar_cane", "sign", "button", "pressure_plate", "rail", "dead_bush",
@@ -94,6 +95,7 @@ func loadBlocks(file string) {
 		for _, s := range b.States {
 			if s.ID < len(solidState) {
 				solidState[s.ID] = solid
+				bedState[s.ID] = strings.HasSuffix(n, "_bed")
 			}
 		}
 	}
@@ -439,6 +441,9 @@ func (b *bot) physicsTick() {
 		return
 	}
 	if jsimTick != nil && jsimTick(b) { // jmove.go
+		return
+	}
+	if sleepTick != nil && sleepTick(b) { // sleep.go
 		return
 	}
 	b.mu.Lock()
