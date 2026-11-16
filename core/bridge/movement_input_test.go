@@ -119,20 +119,55 @@ func TestMovementInput(t *testing.T) {
 		t.Error("StartJumping/StartSprinting repeated in the air")
 	}
 
-	// Sneaking: the move vector is scaled like Bedrock's (x0.3), sneak flags on the first tick.
+	// Sneaking: the Java client crouches by the shift key of the tick before, so the sneak flags
+	// and the move vector scaled like Bedrock's (x0.3) come one tick after the key.
 	javaIn(t, p, v777.ServerboundPlayPlayerCommand, func(w *wire.Writer) { w.VarInt(SelfEntityID); w.VarInt(2); w.VarInt(0) })
 	tick(t, p, keyForward|keyShift, mgl64.Vec3{0.5, 64, 1.25}, 0, 10, true)
+	key := take()[0]
+	if key.InputData.Load(packet.InputFlagSneaking) || key.MoveVector[1] != 1 || !key.InputData.Load(packet.InputFlagStopSprinting) {
+		t.Errorf("shift key tick: sneaking %v move %v stop sprint %v", key.InputData.Load(packet.InputFlagSneaking), key.MoveVector,
+			key.InputData.Load(packet.InputFlagStopSprinting))
+	}
+	tick(t, p, keyForward|keyShift, mgl64.Vec3{0.5, 64, 1.3}, 0, 10, true)
 	sneak := take()[0]
-	if !sneak.InputData.Load(packet.InputFlagSneaking) || !sneak.InputData.Load(packet.InputFlagStartSneaking) || !sneak.InputData.Load(packet.InputFlagStopSprinting) {
-		t.Errorf("sneak flags: sneaking %v start %v stop sprint %v", sneak.InputData.Load(packet.InputFlagSneaking),
-			sneak.InputData.Load(packet.InputFlagStartSneaking), sneak.InputData.Load(packet.InputFlagStopSprinting))
+	if !sneak.InputData.Load(packet.InputFlagSneaking) || !sneak.InputData.Load(packet.InputFlagStartSneaking) {
+		t.Errorf("sneak flags: sneaking %v start %v", sneak.InputData.Load(packet.InputFlagSneaking), sneak.InputData.Load(packet.InputFlagStartSneaking))
 	}
 	if math.Abs(float64(sneak.MoveVector[1])-0.3) > 1e-6 {
 		t.Errorf("sneak move vector %v, want 0.3 forward", sneak.MoveVector)
 	}
-	tick(t, p, 0, mgl64.Vec3{0.5, 64, 1.25}, 0, 10, true)
+	tick(t, p, 0, mgl64.Vec3{0.5, 64, 1.3}, 0, 10, true)
+	if s := take()[0]; !s.InputData.Load(packet.InputFlagSneaking) || s.InputData.Load(packet.InputFlagStopSneaking) {
+		t.Error("the tick the shift key is released: still crouching on Java, not sneaking any more")
+	}
+	tick(t, p, 0, mgl64.Vec3{0.5, 64, 1.3}, 0, 10, true)
 	if s := take()[0]; !s.InputData.Load(packet.InputFlagStopSneaking) || s.InputData.Load(packet.InputFlagSneaking) {
-		t.Error("releasing sneak: no StopSneaking")
+		t.Error("a tick after releasing sneak: no StopSneaking")
+	}
+}
+
+// TestStopSprintRepeated: BDS ignores a StopSprinting that comes while the player is in the
+// air, so it goes again in every input until the server's movement attribute drops the sprint.
+func TestStopSprintRepeated(t *testing.T) {
+	p, take := movePlayer(t)
+	javaIn(t, p, v777.ServerboundPlayPlayerCommand, func(w *wire.Writer) { w.VarInt(SelfEntityID); w.VarInt(1); w.VarInt(0) })
+	tick(t, p, keyForward|keyJump, mgl64.Vec3{0.5, 64.42, 0.8}, 0, 0, false)
+	p.mv.srvSprint = true // the server's attribute: sprinting
+	take()
+	// The Java client runs into a block side in the air and stops sprinting.
+	javaIn(t, p, v777.ServerboundPlayPlayerCommand, func(w *wire.Writer) { w.VarInt(SelfEntityID); w.VarInt(2); w.VarInt(0) })
+	for i := range 3 {
+		tick(t, p, keyForward|keyJump, mgl64.Vec3{0.5, 64.6, 0.8}, 0, 0, false)
+		in := take()[0]
+		if !in.InputData.Load(packet.InputFlagStopSprinting) || in.InputData.Load(packet.InputFlagSprinting) {
+			t.Errorf("input %d after the sprint stop: StopSprinting %v Sprinting %v", i, in.InputData.Load(packet.InputFlagStopSprinting),
+				in.InputData.Load(packet.InputFlagSprinting))
+		}
+	}
+	p.mv.srvSprint = false // the server took it
+	tick(t, p, keyForward|keyJump, mgl64.Vec3{0.5, 64, 0.8}, 0, 0, true)
+	if in := take()[0]; in.InputData.Load(packet.InputFlagStopSprinting) {
+		t.Error("StopSprinting after the server stopped the sprint")
 	}
 }
 
@@ -152,5 +187,37 @@ func TestCorrectionNudges(t *testing.T) {
 	}
 	if off := p.mv.pending[0].offset; math.Abs(off[2]-0.5) > 1e-4 {
 		t.Errorf("relative offset %v, want 0 0 0.5", off)
+	}
+}
+
+// TestTeleportWaitsForChunks: a server teleport to where the Java client has no chunks yet is
+// given to it only once the columns there were in a chunk batch it acknowledged; until then the
+// server gets standing-still inputs at the target.
+func TestTeleportWaitsForChunks(t *testing.T) {
+	p, take := movePlayer(t)
+	to := mgl64.Vec3{1001.5, 60, 1000.5}
+	p.teleportTo(to, 0, 0)
+	if p.mv.held == nil || len(p.mv.pending) != 0 {
+		t.Fatalf("teleport into missing chunks: held %v pending %d", p.mv.held, len(p.mv.pending))
+	}
+	// The client keeps moving where it was, holding forward: not reported.
+	tick(t, p, keyForward, mgl64.Vec3{0.5, 63.9, 0.7}, 0, 0, false)
+	in := take()[0]
+	if got := vec64(in.Position).Sub(mgl64.Vec3{0, eyeHeight, 0}); got.Sub(to).Len() > 1e-4 || in.MoveVector != [2]float32{} {
+		t.Errorf("held: input at %v move %v, want standing at %v", got, in.MoveVector, to)
+	}
+	if !in.InputData.Load(packet.InputFlagHandledTeleport) {
+		t.Error("held: the first input does not confirm the teleport")
+	}
+	p.releaseTeleport()
+	if p.mv.held == nil {
+		t.Fatal("released without the chunks")
+	}
+	// The columns under the player arrive in a batch the client acknowledges.
+	p.batchSeq, p.batchAcked = 1, 1
+	p.world.cols[ChunkPos{1001 >> 4, 1000 >> 4}] = &column{sent: true, batch: 1}
+	p.releaseTeleport()
+	if p.mv.held != nil || len(p.mv.pending) != 1 || !p.mv.pending[0].absolute {
+		t.Fatalf("after the chunks: held %v pending %v", p.mv.held, p.mv.pending)
 	}
 }

@@ -49,12 +49,20 @@ type movement struct {
 	pending []pendingTeleport
 	// teleported: the next input confirms a server teleport (HandledTeleport).
 	teleported bool
+	// held is a server teleport waiting for the Java client to have the chunks there.
+	held *heldTeleport
 
 	wasOnGround, wasJumpKey, wasSneaking, wasSprinting bool
 	glideSign                                          float32   // flight glide move input (sendInput)
 	flyChange                                          int       // 1 started flying, -1 stopped
 	flyRequested                                       time.Time // when the client last asked to fly (RequestAbility)
 	swungAtAir                                         bool
+
+	// shiftKey is the shift key of the last input sent: the Java client crouches by the key of
+	// the tick before (sendInput).
+	shiftKey bool
+	// srvSprint: the server's last movement attribute has the sprint modifier (self.go).
+	srvSprint bool
 
 	lastInput   time.Time
 	corrections int
@@ -73,6 +81,12 @@ type movement struct {
 type sentTick struct {
 	tick uint64
 	pos  mgl64.Vec3
+}
+
+type heldTeleport struct {
+	pos        mgl64.Vec3
+	yaw, pitch float32
+	since      time.Time
 }
 
 type pendingTeleport struct {
@@ -248,6 +262,9 @@ func (p *Player) clientMove(pos *mgl64.Vec3, rot *[2]float32, flags byte) {
 	if rot != nil && valid(float64(rot[0])) && valid(float64(rot[1])) {
 		m.yaw, m.pitch = rot[0], max(-90, min(90, rot[1]))
 	}
+	if m.held != nil {
+		return // the client is not at the server's position yet (teleportTo)
+	}
 	m.onGround, m.hCollision = flags&1 != 0, flags&2 != 0
 	if pos == nil || !valid(pos[0]) || !valid(pos[1]) || !valid(pos[2]) {
 		return
@@ -273,9 +290,43 @@ func mfloor(v float64) float64 { return math.Floor(v) }
 
 // teleportTo puts the client at an absolute position for a server teleport: the next input says
 // it was handled.
+//
+// A teleport to where the Java client has no chunks yet (an island, a portal to another area)
+// waits for them: the Java client simulates a player in a column it does not have as falling
+// through air, and BDS (which stands the player on the ground) corrected it for a second or
+// more after every such teleport. Until the columns are shown, the client stays where it was
+// (its positions are not used), its chunk centre moves to the target so the chunks come, and
+// the server gets standing-still inputs at the target.
 func (p *Player) teleportTo(pos mgl64.Vec3, yaw, pitch float32) {
+	m := &p.mv
+	m.teleported = true
+	if p.world != nil && !p.shown(pos) {
+		m.held = &heldTeleport{pos: pos, yaw: yaw, pitch: pitch, since: time.Now()}
+		m.barrierTick, m.barrierPos = m.tick, pos
+		m.pos, m.lastPos = pos, pos
+		m.yaw, m.pitch = yaw, pitch
+		p.self.pos = pos
+		p.sendCentre(pos, false)
+		return
+	}
+	m.held = nil
 	p.placeAt(pos, mgl64.Vec3{}, yaw, pitch)
-	p.mv.teleported = true
+}
+
+// heldTimeout is how long a teleport waits for its chunks at most.
+const heldTimeout = 3 * time.Second
+
+// releaseTeleport gives the client a held teleport once its chunks are shown. p.mu is held.
+func (p *Player) releaseTeleport() {
+	h := p.mv.held
+	if h == nil || !p.shown(h.pos) && time.Since(h.since) < heldTimeout {
+		return
+	}
+	p.mv.held = nil
+	if debugMove {
+		p.log.Info("MV held teleport released", "pos", h.pos, "waited", time.Since(h.since).Round(time.Millisecond))
+	}
+	p.placeAt(h.pos, mgl64.Vec3{}, h.yaw, h.pitch)
 }
 
 // placeAt puts the client at an absolute position (velocity reset); its positions until it
@@ -378,6 +429,12 @@ func (p *Player) movementTick() {
 // sendInput sends one PlayerAuthInput from the client's state.
 func (p *Player) sendInput() {
 	m := &p.mv
+	if m.held != nil {
+		// Waiting for a teleport's chunks: the player stands still at the target.
+		keys, sprinting := m.keys, m.sprinting
+		m.keys, m.sprinting, m.onGround, m.hCollision = 0, false, true, false
+		defer func() { m.keys, m.sprinting = keys, sprinting }()
+	}
 	r := p.rem
 	m.lastInput = time.Now()
 	flags := protocol.NewInputFlags(packet.InputFlagCount)
@@ -424,7 +481,16 @@ func (p *Player) sendInput() {
 	if mv[0] != 0 && mv[1] != 0 {
 		mv = mv.Mul(float32(1 / math.Sqrt2))
 	}
-	sneaking := m.keys&keyShift != 0 && !p.self.flying
+	// The Java client crouches (and slows its move input) by the shift key of the tick before:
+	// LocalPlayer.aiStep sets crouching before it reads the tick's keys, and the player_input with
+	// the new key goes out in the same tick. BDS sneaks in the tick Sneaking comes, so the sneak
+	// flags and the x0.3 follow the key one tick late (one tick early at a sneak start and stop
+	// the server moved 0.1-0.25 blocks off, then corrected).
+	sneaking := m.shiftKey && !p.self.flying
+	m.shiftKey = m.keys&keyShift != 0
+	if sneaking && m.sprinting {
+		p.stopJavaSprint() // BDS ends a sprint when the player sneaks; Java 26 sprints on
+	}
 	if sneaking {
 		mv = mv.Mul(0.3)
 	}
@@ -487,7 +553,12 @@ func (p *Player) sendInput() {
 	}
 	if sprinting && !m.wasSprinting {
 		flags.Set(packet.InputFlagStartSprinting)
-	} else if !sprinting && m.wasSprinting {
+	} else if !sprinting && (m.wasSprinting || m.srvSprint) {
+		// The Java client stops sprinting when it runs into the side of a block (not when it
+		// only grazes it), often in the air. BDS ignores a StopSprinting that comes while the
+		// player is in the air and sprints on, with the sprint's speed and its next jump's boost:
+		// 0.3-0.9 blocks off within a jump. So StopSprinting goes again in every input until the
+		// server's movement attribute no longer has the sprint modifier; BDS takes it on landing.
 		flags.Set(packet.InputFlagStopSprinting)
 	}
 	m.wasSprinting = sprinting

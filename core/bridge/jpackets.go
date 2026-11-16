@@ -8,6 +8,7 @@ import (
 	"github.com/df-mc/dragonfly/server/java/protocol/version"
 	"github.com/df-mc/dragonfly/server/java/protocol/wire"
 	"github.com/go-gl/mathgl/mgl64"
+	"github.com/sandertv/gophertunnel/minecraft/protocol"
 )
 
 // Java clientbound packets, encoded as javasession encodes them (26.3 layout; the connection
@@ -243,12 +244,21 @@ func (p *Player) sendExperience(progress float32, level int32) {
 	p.send(v777.ClientboundPlaySetExperience, w)
 }
 
+// sprintModifierAttr is sendAttributesMod's modifier: the Java client's own sprint modifier.
+const sprintModifierAttr = 1
+
 // sendAttributes sets base values of the player's own attributes (registry names such as
 // "minecraft:step_height"), without modifiers.
 func (p *Player) sendAttributes(names []string, values []float64) {
+	p.sendAttributesMod("", 0, names, values)
+}
+
+// sendAttributesMod is sendAttributes giving the attribute modName the modifier mod (0: none).
+func (p *Player) sendAttributesMod(modName string, mod int, names []string, values []float64) {
 	type attr struct {
 		id  int32
 		val float64
+		mod int
 	}
 	var list []attr
 	var legacy []int32
@@ -265,7 +275,11 @@ func (p *Player) sendAttributes(names []string, values []float64) {
 				continue
 			}
 		}
-		list = append(list, attr{id, values[i]})
+		m := 0
+		if name == modName {
+			m = mod
+		}
+		list = append(list, attr{id, values[i], m})
 	}
 	if len(list) == 0 {
 		return
@@ -276,6 +290,14 @@ func (p *Player) sendAttributes(names []string, values []float64) {
 	for _, a := range list {
 		w.VarInt(a.id)
 		w.Float64(a.val)
+		if a.mod == sprintModifierAttr {
+			// LivingEntity.SPEED_MODIFIER_SPRINTING: +30%, add_multiplied_total.
+			w.VarInt(1)
+			w.String("minecraft:sprinting")
+			w.Float64(0.3)
+			w.Byte(2)
+			continue
+		}
 		w.VarInt(0)
 	}
 	p.send(v777.ClientboundPlayUpdateAttributes, w)
@@ -491,4 +513,35 @@ func (p *Player) sendSkinParts() {
 	w.Byte(p.info.SkinParts)
 	w.Byte(0xff)
 	p.send(v777.ClientboundPlaySetEntityData, w)
+}
+
+// stopJavaSprint ends the Java client's sprint itself: its shared flags without the sprint bit and
+// the movement speed without the sprint modifier. Java 26 keeps sprinting while crouching; BDS
+// stops a sprint when the player sneaks, so a sprinting Java player that crouched moved at sprint
+// speed x0.3 (with the sprint jump boost) while BDS walked: corrected every few ticks. A crouching
+// client does not start sprinting again (canStartSprinting); it says STOP_SPRINTING itself.
+func (p *Player) stopJavaSprint() {
+	f := p.self.bflags
+	var v byte = 0x02 // crouching
+	if f&(1<<protocol.EntityDataFlagOnFire) != 0 {
+		v |= 0x01
+	}
+	if f&(1<<protocol.EntityDataFlagSwimming) != 0 {
+		v |= 0x10
+	}
+	if f&(1<<protocol.EntityDataFlagInvisible) != 0 {
+		v |= 0x20
+	}
+	if f&(1<<protocol.EntityDataFlagGliding) != 0 {
+		v |= 0x80
+	}
+	w := p.pk()
+	w.VarInt(SelfEntityID)
+	w.Byte(0)
+	w.VarInt(serByte)
+	w.Byte(v)
+	w.Byte(0xff)
+	p.send(v777.ClientboundPlaySetEntityData, w)
+	p.mv.sprinting = false
+	p.sendMovementAttributes()
 }

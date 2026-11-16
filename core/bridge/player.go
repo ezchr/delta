@@ -56,6 +56,8 @@ type Player struct {
 	centreSent    bool
 	chunkRate     float64 // chunks per tick the client asked for
 	batchInFlight bool
+	batchSeq      uint64    // chunk batches sent
+	batchAcked    uint64    // the last chunk batch the client acknowledged (it has its columns)
 	keepAlive     int64     // id of the keep-alive waiting for an answer (0: none)
 	keepAliveAt   time.Time // when it was sent
 	javaLoaded    bool      // the client sent player_loaded since the last login/respawn
@@ -341,6 +343,7 @@ func (p *Player) handleJava(pk javaPacket) error {
 func (p *Player) tick() {
 	p.sendChunkBatch()
 	if p.rem != nil {
+		p.releaseTeleport()
 		p.movementTick()
 	}
 	for _, f := range tickHooks {

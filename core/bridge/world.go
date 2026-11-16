@@ -46,6 +46,7 @@ type column struct {
 	be     map[cube.Pos]map[string]any // block entity NBT the server sent
 	queued bool                        // waiting in the send queue
 	sent   bool                        // the Java client has it
+	batch  uint64                      // the chunk batch it went in (Player.batchSeq)
 }
 
 // bedrockRange is the block range of a Bedrock dimension.
@@ -134,6 +135,7 @@ func init() {
 		}
 		p.chunkRate = min(rate, 64)
 		p.batchInFlight = false
+		p.batchAcked = p.batchSeq
 		return r.Err
 	})
 }
@@ -303,6 +305,7 @@ func (p *Player) sendChunkBatch() {
 		queue = queue[:n]
 	}
 	p.send(v777.ClientboundPlayChunkBatchStart, p.pk())
+	p.batchSeq++
 	sent := 0
 	for _, pos := range queue {
 		col := w.cols[pos]
@@ -311,7 +314,7 @@ func (p *Player) sendChunkBatch() {
 			p.log.Error("encode chunk", "pos", pos, "err", err)
 			continue
 		}
-		col.sent = true
+		col.sent, col.batch = true, p.batchSeq
 		sent++
 	}
 	w2 := p.pk()
@@ -626,6 +629,23 @@ func (w *World) Block(pos cube.Pos) (uint32, bool) {
 		return w.pal.Air, col != nil
 	}
 	return col.c.Block(uint8(pos[0]&15), int16(pos[1]), uint8(pos[2]&15), 0), true
+}
+
+// shown reports whether the Java client has the columns under a player box (width 0.6) at pos:
+// sent in a chunk batch it acknowledged.
+func (p *Player) shown(pos mgl64.Vec3) bool {
+	w := p.world
+	if w == nil {
+		return false
+	}
+	for _, d := range [4][2]float64{{-0.3, -0.3}, {-0.3, 0.3}, {0.3, -0.3}, {0.3, 0.3}} {
+		x, z := int32(math.Floor(pos[0]+d[0]))>>4, int32(math.Floor(pos[2]+d[1]))>>4
+		col := w.cols[ChunkPos{x, z}]
+		if col == nil || !col.sent || col.batch > p.batchAcked {
+			return false
+		}
+	}
+	return true
 }
 
 // HasColumn reports whether the column holding the block x, z is in.

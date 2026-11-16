@@ -34,6 +34,8 @@ type selfState struct {
 	searching bool
 	// immobile: the server froze the player (entity flag no AI).
 	immobile bool
+	// bflags is the player's own Bedrock entity flags (selfMetadata).
+	bflags int64
 	// held: the client is kept in the air until the column it is in has been sent (hold.go).
 	held bool
 	// usingItem: the server's using-item flag of the player, as the Java client was told (food.go).
@@ -147,35 +149,43 @@ func (p *Player) showSelf(teleport bool) {
 // Bedrock's movement values given to the Java client, so it moves as a Bedrock client would and
 // the server's movement checks agree with it.
 const (
-	bedrockStepHeight    = 0.5625
-	bedrockJumpStrength  = 0.42
-	bedrockGravity       = 0.08
-	bedrockSneakSpeed    = 0.3
-	bedrockSafeFall      = 3
-	bedrockBlockRange    = 5.0
-	bedrockEntityRange   = 3.0
-	noAttackCooldown     = 1024 // Java's attack cooldown recharges at once
-	bedrockCreativeRange = 12.0
+	bedrockStepHeight          = 0.5625
+	bedrockJumpStrength        = 0.42
+	bedrockGravity             = 0.08
+	bedrockSneakSpeed          = 0.3
+	bedrockSafeFall            = 3
+	bedrockBlockRange          = 5.7 // Bedrock's block reach with a mouse (GameMode::getPickRange), creative too
+	bedrockEntityRange         = 3.0
+	bedrockCreativeEntityRange = 5.0  // Bedrock's creative attack reach (survival and adventure: 3)
+	noAttackCooldown           = 1024 // Java's attack cooldown recharges at once
+	bedrockCreativeRange       = 5.7  // 12 is only touch input in creative; Java plays with a mouse
 )
 
 // sendMovementAttributes sends the Java client Bedrock's movement attributes.
 func (p *Player) sendMovementAttributes() {
 	s := &p.self
-	blockRange := bedrockBlockRange
+	blockRange, entityRange := bedrockBlockRange, bedrockEntityRange
 	if s.mode == GameCreative {
-		blockRange = bedrockCreativeRange
+		blockRange, entityRange = bedrockCreativeRange, bedrockCreativeEntityRange
 	}
 	maxHealth := float64(s.maxHealth)
 	if maxHealth <= 0 {
 		maxHealth = 20
 	}
-	p.sendAttributes(
+	// update_attributes replaces an attribute's modifiers too: a sprinting client keeps its own
+	// sprint modifier (it adds it only when the sprint starts), else it would sprint at walking
+	// speed while BDS sprints at full (a speed effect changing mid-sprint).
+	speedMods := 0
+	if p.mv.sprinting {
+		speedMods = sprintModifierAttr
+	}
+	p.sendAttributesMod("minecraft:movement_speed", speedMods,
 		[]string{"minecraft:step_height", "minecraft:jump_strength", "minecraft:gravity", "minecraft:movement_speed",
 			"minecraft:sneaking_speed", "minecraft:safe_fall_distance", "minecraft:block_interaction_range",
 			"minecraft:entity_interaction_range", "minecraft:attack_speed", "minecraft:max_health"},
 		[]float64{bedrockStepHeight, bedrockJumpStrength, bedrockGravity, s.speed,
 			bedrockSneakSpeed, bedrockSafeFall, blockRange,
-			bedrockEntityRange, noAttackCooldown, maxHealth},
+			entityRange, noAttackCooldown, maxHealth},
 	)
 }
 
@@ -351,7 +361,8 @@ func (p *Player) updateSelfAttributes(attrs []protocol.Attribute) {
 			s.xpProgress = a.Value
 			xp = true
 		case "minecraft:movement":
-			p.sprintJumpVerdict(sprintModifier(a))
+			p.mv.srvSprint = sprintModifier(a)
+			p.sprintJumpVerdict(p.mv.srvSprint)
 			speed := baseMovement(a)
 			if debugMove {
 				p.log.Info("MV movement attribute", "value", a.Value, "default", a.Default, "modifiers", a.Modifiers, "base", speed)
@@ -428,6 +439,7 @@ func (p *Player) selfMetadata(meta protocol.EntityMetadata) {
 	if !ok {
 		return
 	}
+	p.self.bflags = flags
 	p.self.immobile = flags&(1<<protocol.EntityDataFlagNoAI) != 0
 	p.selfUsing(flags&(1<<protocol.EntityDataFlagUsingItem) != 0)
 }
