@@ -73,7 +73,7 @@ func TestHeldPlacement(t *testing.T) {
 		t.Fatal("the display rotation should leave the blade unturned")
 	}
 	k, c := fit(els, true)
-	tp, fp := heldDisplays(best, c, k, pre.t, heldFPScale)
+	tp, fp := heldDisplays(best, c, k, pre.t, heldFPScale) // shrunk about the grip here
 	mc := [3]float64{(els[0].from[0] + els[0].to[0]) / 2, (els[0].from[1] + els[0].to[1]) / 2, (els[0].from[2] + els[0].to[2]) / 2}
 	d := tp.at(mc)
 	got := handR.apply([3]float64{handV[0] + d[0], handV[1] + d[1], handV[2] + d[2]})
