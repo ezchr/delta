@@ -102,14 +102,44 @@ type javaModel struct {
 	} `json:"elements"`
 }
 
+// partModel is the model an item definition picks for a custom model data value (a
+// range_dispatch on its first float: the last entry whose threshold is not above it).
+func partModel(t *testing.T, files map[string][]byte, item string, index int) string {
+	t.Helper()
+	ns, p, _ := strings.Cut(item, ":")
+	var def struct {
+		Model struct {
+			Type, Property string
+			Index          int
+			Entries        []struct {
+				Threshold float64
+				Model     struct{ Type, Model string }
+			}
+		}
+	}
+	if err := json.Unmarshal(files["assets/"+ns+"/items/"+p+".json"], &def); err != nil {
+		t.Fatalf("item definition %s: %v", item, err)
+	}
+	if def.Model.Type != "minecraft:range_dispatch" || def.Model.Property != "minecraft:custom_model_data" || def.Model.Index != 0 {
+		t.Fatalf("item definition %s: %+v", item, def.Model)
+	}
+	model := ""
+	for i, e := range def.Model.Entries {
+		if e.Threshold != float64(i) || e.Model.Type != "minecraft:model" {
+			t.Fatalf("item definition %s entry %d: %+v", item, i, e)
+		}
+		if e.Threshold <= float64(index) {
+			model = e.Model.Model
+		}
+	}
+	return model
+}
+
 // checkModel checks what a Java 26 client insists on: elements inside -16..32, face UVs inside
 // the texture, a texture that is in the pack.
 func checkModel(t *testing.T, files map[string][]byte, id string) javaModel {
 	t.Helper()
 	ns, p, _ := strings.Cut(id, ":")
-	if _, ok := files["assets/"+ns+"/items/"+p+".json"]; !ok {
-		t.Fatalf("no item definition for %s", id)
-	}
 	raw, ok := files["assets/"+ns+"/models/"+p+".json"]
 	if !ok {
 		t.Fatalf("no model %s", id)
@@ -178,8 +208,11 @@ func TestAnimatedEntity(t *testing.T) {
 	rig := w.Anim.Rig()
 	elements := 0
 	bones := map[string]anim.Part{}
-	for _, p := range w.Anim.Parts {
-		m := checkModel(t, files, p.Model)
+	for i, p := range w.Anim.Parts {
+		if p.Index != i || p.Model != w.Anim.Parts[0].Model {
+			t.Fatalf("part %d: item %s, model data %d", i, p.Model, p.Index)
+		}
+		m := checkModel(t, files, partModel(t, files, p.Model, p.Index))
 		elements += len(m.Elements)
 		if p.K <= 0 || p.K > 1 {
 			t.Fatalf("part %s shrunk by %v", p.Model, p.K)
@@ -207,7 +240,7 @@ func TestAnimatedEntity(t *testing.T) {
 	}
 	// The head's model has the head's pivot at its centre and the bind rotation in the pose,
 	// not in the model: its cube (y 16..22 around pivot y 16) is at 8..14, unrotated.
-	hm := checkModel(t, files, bones["head"].Model)
+	hm := checkModel(t, files, partModel(t, files, bones["head"].Model, bones["head"].Index))
 	if e := hm.Elements[0]; e.Rotation != nil || e.From != [3]float64{5, 8, 5} || e.To != [3]float64{11, 14, 11} {
 		t.Errorf("head element %+v", e)
 	}
@@ -225,7 +258,7 @@ func TestAnimatedEntity(t *testing.T) {
 		t.Fatalf("%d parts with room for all, want 35 (the hat rides the head)", n)
 	}
 	for _, p := range res2.Entities["t:walker"].Anim.Parts {
-		checkModel(t, files2, p.Model)
+		checkModel(t, files2, partModel(t, files2, p.Model, p.Index))
 	}
 	// The conversion is deterministic.
 	res3, _ := convertFiles(t, AnimatedPack(30), 0)

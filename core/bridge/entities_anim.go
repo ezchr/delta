@@ -38,9 +38,10 @@ import (
 //     player's feet is static too (animSees);
 //   - only the parts whose pose changed are sent, and a still mob costs nothing.
 //
-// The worst case is every part of every animated mob moving: 6*24 displays at 6.7 Hz plus
-// 10*24 at 3.3 Hz = 1760 entity data packets a second (about 40 bytes each), and 384 display
-// entities.
+// The worst case is every part of every animated mob moving, all of them mobs with more moving
+// bones than anim.MaxParts (32): 6*32 displays at 6.7 Hz plus 10*32 at 3.3 Hz = 2350 entity data
+// packets a second (about 40 bytes each), and 512 display entities. Most mobs have far fewer
+// parts (16 Pokemon around a player: about 250 displays).
 const (
 	animNearTicks = 3
 	animFarTicks  = 6
@@ -416,6 +417,8 @@ func (p *Player) animStart(e *entity, me *modelEntity, period int) {
 		js.ID, js.Count = javaPaper, 1
 		js.ItemModel = mp.Model
 		js.Add(jitem.CompItemModel)
+		js.CustomModelData.Floats = append(js.CustomModelData.Floats[:0], float32(mp.Index))
+		js.Add(jitem.CompCustomModelData)
 		js.EncodeFor(w, p.win.proto())
 		w.Byte(0xff)
 		p.send(v777.ClientboundPlaySetEntityData, w)

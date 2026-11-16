@@ -4,12 +4,13 @@ import "sync"
 
 // MaxParts is the most displays one mob is drawn with. A model with more moving bones than this
 // has the ones that move least merged into their parents.
-const MaxParts = 24
+const MaxParts = 32
 
 // Part is one display of an animated model.
 type Part struct {
 	Bone  int     // the bone it moves with; -1: the model's root (it never moves)
 	Model string  // item_model id; the part's pivot is at the model's (8, 8, 8)
+	Index int     // the item's custom model data (first float): which of the item's models
 	K     float64 // how much the model was shrunk to fit Java's model box (<= 1)
 }
 

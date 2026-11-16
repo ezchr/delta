@@ -209,6 +209,29 @@ func (z zipFS) model(id string) ([]byte, bool) {
 	return b, ok
 }
 
+// partModel is the model a part's item definition picks for its custom model data.
+func (z zipFS) partModel(p anim.Part) string {
+	ns, path := split(p.Model)
+	var def struct {
+		Model struct {
+			Entries []struct {
+				Threshold float64
+				Model     struct{ Model string }
+			}
+		}
+	}
+	if json.Unmarshal(z["assets/"+ns+"/items/"+path+".json"], &def) != nil {
+		fail(fmt.Errorf("no item definition %s", p.Model))
+	}
+	model := ""
+	for _, e := range def.Model.Entries {
+		if e.Threshold <= float64(p.Index) {
+			model = e.Model.Model
+		}
+	}
+	return model
+}
+
 func (z zipFS) texture(id string) *image.NRGBA {
 	ns, p := split(id)
 	b, ok := z["assets/"+ns+"/textures/"+p+".png"]
@@ -353,7 +376,7 @@ func sheet(packs []*javapack.Source, z zipFS, res *javapack.Result, id, preset s
 	}
 	var pq []partQuads
 	for _, p := range e.Anim.Parts {
-		m, err := render.LoadJavaModel(p.Model, z.model)
+		m, err := render.LoadJavaModel(z.partModel(p), z.model)
 		if err != nil {
 			fail(err)
 		}

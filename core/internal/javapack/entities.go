@@ -171,13 +171,23 @@ func (b *builder) entities() {
 		e.Model = Namespace + ":entity/" + safe
 		e.Name = b.lang["entity."+id+".name"]
 		if o.src != nil {
+			// One item definition for all of an entity's parts: the part is picked by the
+			// item's custom model data (its first float is the part's number). A definition
+			// per part would be one more file per part, and a zip pays about 200 bytes for a
+			// file before its content.
+			item := "entity/" + safe + "/parts"
+			entries := make([]any, 0, len(o.plan))
 			for i := range o.plan {
 				name := fmt.Sprintf("entity/%s/p%d", safe, i)
 				b.json("assets/"+Namespace+"/models/"+name+".json", o.parts[i])
-				b.json("assets/"+Namespace+"/items/"+name+".json", map[string]any{
-					"model": map[string]any{"type": "minecraft:model", "model": Namespace + ":" + name},
-				})
-				o.plan[i].Model = Namespace + ":" + name
+				entries = append(entries, map[string]any{"threshold": i,
+					"model": map[string]any{"type": "minecraft:model", "model": Namespace + ":" + name}})
+				o.plan[i].Model, o.plan[i].Index = Namespace+":"+item, i
+			}
+			if len(entries) > 0 {
+				b.json("assets/"+Namespace+"/items/"+item+".json", map[string]any{"model": map[string]any{
+					"type": "minecraft:range_dispatch", "property": "minecraft:custom_model_data", "index": 0, "entries": entries,
+				}})
 			}
 			e.Anim = anim.NewModel(o.plan, o.src, lib)
 			if e.Anim.Moves() {

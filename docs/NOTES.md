@@ -230,6 +230,50 @@ live `/root/jbtest/sightlive.sh`: a Charizard behind a stone wall stayed static 
 in the open animated, was animated a second after the wall was removed and static again three
 seconds after it came back.
 
+**Detail on big mobs (branch `anim-detail`).** At 24 parts Charizard (81 moving bones) lost
+fingers, jaw, claws and a joint each of neck, tail and feet. Measured with `animpreview`
+(share of pixels that differ from the posed Bedrock geometry, worst sampled time per situation;
+`/root/jbtest/measure.sh`), the Cobblemon pack converted alone:
+
+| Parts per mob | Charizard idle | walk | fly | attack | asleep | Gyarados swim | Part models | Pack |
+|---|---|---|---|---|---|---|---|---|
+| 12 | 0.97 % | 1.64 % | 2.13 % | 2.39 % | 4.15 % | 1.85 % | 10348 | 24.9 MB |
+| 24 | 0.51 % | 0.69 % | 1.21 % | 1.09 % | 1.91 % | 0.46 % | 18593 | 30.8 MB |
+| 32 | 0.12 % | 0.27 % | 0.42 % | 0.53 % | 0.67 % | 0.36 % | 22397 | 33.5 MB |
+| 48 | 0.07 % | 0.20 % | 0.17 % | 0.22 % | 0.38 % | 0.25 % | 26919 | 36.8 MB |
+
+(Pack sizes with an item definition per part. Pikachu, 23 moving groups: 0.04 % at 24, 0 above.)
+What was weighed:
+
+- **One item definition per entity** (done on this branch): the part is picked by the item's
+  custom model data (`range_dispatch` on its first float) instead of an item definition file
+  per part. Same pictures, 18593 fewer files: the pack at 24 parts goes from 30.8 to 25.1 MB
+  (a zip pays about 190 bytes per file before its content; headers were 8.1 MB of the 30.8).
+  Not yet seen in a real client: `range_dispatch` on `custom_model_data` is standard since
+  1.21.4, the bot only checks that the item decodes.
+- **A higher budget for every mob** (done: 32). Error a third of what it was at 24 for
+  Charizard; only mobs with more than 24 moving groups get more displays. Worst case 2350
+  instead of 1760 packets a second and 512 instead of 384 displays; with the item definition
+  change the pack is 26.6 MB, less than before this branch. 48 halves the error again for
+  another 3.3 MB and a worst case of 3500 packets a second: past the point where it pays.
+- **More parts only for the nearest one or two mobs.** Needs a second set of part models per big
+  mob (the 24 groups are unions of the 48, but a display shows one model, so the merged groups
+  need models of their own): about 20000 more models, 8 MB (estimated from the counts above),
+  for 2080 packets a second worst case. Cheaper on the wire than 48 for all, dearer in the
+  pack than 48 for all (36.8 - 30.8 = 6 MB), and a mob changes shape as the player walks up
+  to it. Not built.
+- **Merging by error in screen pixels at the mob's distance.** It is the same mechanism as the
+  point above (a part set per distance band), with a different rule for which bones merge in
+  the far set; at 24 blocks a model pixel is two screen pixels, so a far set of 12 to 16 parts
+  would do. Only worth it together with a near/far split. Not built.
+- **Pose variants as alternative models swapped by custom model data** (a hand with fingers
+  open and closed instead of a display per finger). Each variant is a model, the swap is a
+  packet like a pose is, and nothing interpolates between two models: fingers would snap. It
+  also needs the motion clustered into frames per animation. Not built, not recommended.
+
+Recommended and built on the branch: one item definition per entity, and 32 parts. The next
+step, if Charizard's fingers matter up close, is a 48-part set for the nearest two mobs.
+
 **What is not evaluated degrades to still.** A channel whose Molang does not compile or uses a
 query the bridge has no answer for is left out (that bone keeps still on that channel); an
 animation that is not in the packs (vanilla `animation.humanoid.*`, which add-on NPCs reuse) is
