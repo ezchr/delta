@@ -16,6 +16,13 @@ from pathlib import Path
 
 from endstone.plugin import Plugin
 
+try:  # the version the wheel was built with (build.sh VERSION)
+    from importlib.metadata import version as _dist_version
+
+    __version__ = _dist_version("endstone_delta")
+except Exception:  # noqa: BLE001 - not installed as a wheel (tests)
+    __version__ = "0.0.0"
+
 from . import _native
 from .auth.beacon_claim import ClaimVerifier, read_secret
 from .auth.hook import IdentityHook
@@ -69,7 +76,7 @@ _LEVELS = {"DEBUG": "debug", "INFO": "info", "WARNING": "warning", "ERROR": "err
 class DeltaPlugin(Plugin):
     api_version = "0.11"
     name = "delta"
-    version = "0.2.0"
+    version = __version__
     description = "Java Edition players on a Bedrock server"
     # Load after the xuidforward plugin when both are installed: it hooks BDS first, and this one
     # uses that hook for Java players instead of trying to patch BDS a second time.
