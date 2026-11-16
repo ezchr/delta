@@ -1,6 +1,7 @@
 package bridge
 
 import (
+	"strconv"
 	"strings"
 
 	"github.com/sandertv/gophertunnel/minecraft/protocol"
@@ -56,11 +57,26 @@ func (p *Player) writeTextData(d dataWriter, e *entity) {
 	}
 	d.head(11, serVector3)
 	d.w.Float32(0)
-	d.w.Float32(h + float32(textLift))
+	d.w.Float32(h + textShift(name))
 	d.w.Float32(0)
 	d.byteVal(15, textBillboardAll)
 	d.intVal(16, 15<<4|15<<20) // full bright, as name tags are drawn
 	d.head(23, serComponent)
 	writeText(d.w, name)
 	d.byteVal(27, textDefaultBack|textSeeThrough)
+}
+
+// textShift is how far up a text display is drawn so its text sits where Bedrock draws the name
+// tag: Crossfly's placement (javasession textDisplayShift), used on the other servers. Bedrock
+// draws a name tag lower than Java draws the same text, by more the more lines it has: 0.1414 a
+// line (Geyser's number) under a base of 0.35 blocks, measured in game. Option text_display_base.
+func textShift(name string) float32 {
+	if name == "" {
+		return 0
+	}
+	base := float32(0.35)
+	if v, err := strconv.ParseFloat(option("text_display_base", ""), 32); err == nil {
+		base = float32(v)
+	}
+	return base - 0.1414*float32(strings.Count(name, "\n")+1)
 }
