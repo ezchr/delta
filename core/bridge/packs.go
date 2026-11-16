@@ -326,6 +326,10 @@ func (p *Player) javaPackFor(conn *minecraft.Conn, gd minecraft.GameData, pal *b
 			return nil
 		}
 		res.HudMarkers = javapack.HudMarkersOf(in.Packs)
+		res.FormScreens = javapack.FormScreensOf(in.Packs)
+		if len(res.FormScreens) > 0 {
+			p.log.Info("forms the pack draws as its own screens are shown as text", "screens", len(res.FormScreens))
+		}
 		if len(res.HudMarkers) > 0 {
 			p.log.Info("titles that are data for the pack's own HUD are not shown", "markers", strings.Join(res.HudMarkers, ", "))
 		}
@@ -359,6 +363,7 @@ func (p *Player) javaPackFor(conn *minecraft.Conn, gd minecraft.GameData, pal *b
 		go prunePacks(p.log)
 	}
 	p.hudMarkers = b.res.HudMarkers
+	p.formScreens = b.res.FormScreens
 	if b.res.Empty() {
 		return nil
 	}
