@@ -252,7 +252,7 @@ func (c *compiler) channel(raw json.RawMessage) *channel {
 	ch := &channel{keys: make([]key, 0, len(frames))}
 	for ts, fr := range frames {
 		t, err := strconv.ParseFloat(strings.TrimSpace(ts), 64)
-		if err != nil || t < 0 {
+		if err != nil || !(t >= 0) || t > 1e6 {
 			return nil
 		}
 		k := key{t: float32(t)}
@@ -382,7 +382,7 @@ func lastKeyTime(raw json.RawMessage) float64 {
 	}
 	last := 0.0
 	for ts := range frames {
-		if t, err := strconv.ParseFloat(strings.TrimSpace(ts), 64); err == nil {
+		if t, err := strconv.ParseFloat(strings.TrimSpace(ts), 64); err == nil && t >= 0 && t <= 1e6 {
 			last = max(last, t)
 		}
 	}

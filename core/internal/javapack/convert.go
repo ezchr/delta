@@ -93,9 +93,10 @@ type Result struct {
 // Stats counts what a conversion made.
 type Stats struct {
 	Packs, Overrides, Items, Blocks, Entities, LangKeys int
-	Equipment, Held                                     int      // armour pieces with a layer, 3D held models
-	Animated, Parts                                     int      // entities with animated parts, and their part models
-	AnimBytes                                           int      // animation files kept (compressed) for rigs compiled later
+	Equipment, Held                                     int // armour pieces with a layer, 3D held models
+	Animated, Parts                                     int // entities with animated parts, and their part models
+	AnimBytes                                           int // animation files kept (compressed) for rigs compiled later
+	EntitiesTook                                        time.Duration
 	Missing                                             []string // what could not be converted (first few)
 }
 
@@ -166,7 +167,9 @@ func Convert(in *Input) (*Result, error) {
 	b.armor()
 	b.held()
 	b.blocks()
+	start := time.Now()
 	b.entities()
+	b.res.Stats.EntitiesTook = time.Since(start)
 	if len(b.lang) > 0 {
 		b.json("assets/"+Namespace+"/lang/en_us.json", b.lang)
 		b.res.Stats.LangKeys = len(b.lang)

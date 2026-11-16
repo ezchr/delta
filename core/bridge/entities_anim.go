@@ -133,7 +133,16 @@ func (p *Player) animInputs(e *entity, a *modelAnim, dt float64) {
 			h, dy = 0, 0
 		}
 		a.dist += h
-		in.GroundSpeed, in.VerticalSpeed = h/dt, dy/dt
+		// Half of the last value stays: positions come in bursts, and a pack's "is it moving"
+		// threshold should not flicker with them.
+		in.GroundSpeed = (in.GroundSpeed + h/dt) / 2
+		in.VerticalSpeed = (in.VerticalSpeed + dy/dt) / 2
+		if in.GroundSpeed < 0.05 {
+			in.GroundSpeed = 0
+		}
+		if math.Abs(in.VerticalSpeed) < 0.05 {
+			in.VerticalSpeed = 0
+		}
 	} else if dt > 0 {
 		in.GroundSpeed, in.VerticalSpeed = 0, 0
 	}

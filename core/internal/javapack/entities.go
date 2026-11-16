@@ -109,7 +109,7 @@ func (b *builder) entities() {
 			continue
 		}
 		work = append(work, &entityOut{def: d, geo: g, tex: tex})
-		animated = animated || len(d.scripts.Animate) > 0
+		animated = animated || len(d.scripts.Animate) > 0 || len(d.scripts.Scale) > 0
 	}
 	var lib *anim.Library
 	if animated {

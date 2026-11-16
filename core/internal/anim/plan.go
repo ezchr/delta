@@ -3,6 +3,7 @@ package anim
 import (
 	"math"
 	"sort"
+	"strings"
 
 	"delta/core/internal/molang"
 )
@@ -41,9 +42,9 @@ var presets = []Inputs{
 
 const (
 	presetSettle  = 4    // steps before sampling, for controllers to arrive in their state
-	presetSamples = 7    // poses sampled per preset
+	presetSamples = 12   // poses sampled per preset
 	settleStep    = 0.55 // seconds
-	sampleStep    = 0.29
+	sampleStep    = 0.37 // 12 of them cover a 4 second loop
 	// mergeFree is the movement (pixels) below which a bone is merged whatever the budget.
 	mergeFree = 0.05
 )
@@ -109,24 +110,34 @@ func MakePlan(rig *Rig, boxes []Box, maxParts int) *Plan {
 		}
 	}
 	rel := func(k, parent, child int) (Xform, bool) { return Rel(poses[k][parent], poses[k][child]) }
+	// cost is how far a group's cubes move against its parent group over the sampled poses: the
+	// longest way one of its corners goes (the size of the box around its positions), in pixels.
 	cost := func(i int) float64 {
 		g := &groups[i]
-		r0, ok := rel(0, g.parent, i)
-		if !ok {
+		if _, ok := rel(0, g.parent, i); !ok {
 			return 0 // its parent is scaled away in the reference pose: nothing to see
 		}
-		worst := 0.0
-		for k := 1; k < len(poses); k++ {
+		var lo, hi [8][3]float64
+		for c := range lo {
+			lo[c] = [3]float64{math.Inf(1), math.Inf(1), math.Inf(1)}
+			hi[c] = [3]float64{math.Inf(-1), math.Inf(-1), math.Inf(-1)}
+		}
+		for k := range poses {
 			rk, ok := rel(k, g.parent, i)
 			if !ok {
 				continue
 			}
 			for c := 0; c < 8; c++ {
-				p := corner(g.lo, g.hi, c)
-				a, b := r0.Apply(p), rk.Apply(p)
-				d := math.Sqrt((a[0]-b[0])*(a[0]-b[0]) + (a[1]-b[1])*(a[1]-b[1]) + (a[2]-b[2])*(a[2]-b[2]))
-				worst = max(worst, d)
+				p := rk.Apply(corner(g.lo, g.hi, c))
+				for a := 0; a < 3; a++ {
+					lo[c][a], hi[c][a] = min(lo[c][a], p[a]), max(hi[c][a], p[a])
+				}
 			}
+		}
+		worst := 0.0
+		for c := range lo {
+			d := [3]float64{hi[c][0] - lo[c][0], hi[c][1] - lo[c][1], hi[c][2] - lo[c][2]}
+			worst = max(worst, math.Sqrt(d[0]*d[0]+d[1]*d[1]+d[2]*d[2]))
 		}
 		return worst
 	}
@@ -143,16 +154,34 @@ func MakePlan(rig *Rig, boxes []Box, maxParts int) *Plan {
 			}
 		}
 	}
-	for {
-		best := -1
-		for i := 0; i < nb; i++ {
-			if groups[i].alive && (best < 0 || groups[i].cost < groups[best].cost) {
-				best = i
-			}
+	// A left bone and its right twin are merged together, so a mob does not end up with a knee
+	// that bends on one side only.
+	twin := make([]int, nb)
+	byName := map[string]int{}
+	for i, b := range rig.Bones {
+		byName[strings.ToLower(b.Name)] = i
+	}
+	for i, b := range rig.Bones {
+		twin[i] = -1
+		if j, ok := byName[twinName(strings.ToLower(b.Name))]; ok && j != i {
+			twin[i] = j
 		}
-		if best < 0 || (groups[best].cost > mergeFree && count <= maxParts) {
-			break
+	}
+	// weigh ranks a group for merging: how far it moves, more for a big one (a head that nods a
+	// little is missed sooner than a whisker that waves).
+	weigh := func(i int) float64 {
+		g := &groups[i]
+		d := [3]float64{g.hi[0] - g.lo[0], g.hi[1] - g.lo[1], g.hi[2] - g.lo[2]}
+		return g.cost * math.Sqrt(max(1, math.Sqrt(d[0]*d[0]+d[1]*d[1]+d[2]*d[2])))
+	}
+	pairCost := func(i int) (raw, weighed float64) {
+		raw, weighed = groups[i].cost, weigh(i)
+		if t := twin[i]; t >= 0 && groups[t].alive && groups[t].parent != i && groups[i].parent != t {
+			raw, weighed = max(raw, groups[t].cost), max(weighed, weigh(t))
 		}
+		return raw, weighed
+	}
+	merge := func(best int) {
 		g := &groups[best]
 		pg := &groups[g.parent]
 		// Its cubes now belong to the parent group, where the reference pose puts them.
@@ -185,6 +214,26 @@ func MakePlan(rig *Rig, boxes []Box, maxParts int) *Plan {
 		}
 		if parent < nb {
 			groups[parent].cost = cost(parent)
+		}
+	}
+	for {
+		best, bc, braw := -1, 0.0, 0.0
+		for i := 0; i < nb; i++ {
+			if !groups[i].alive {
+				continue
+			}
+			if raw, c := pairCost(i); best < 0 || c < bc {
+				best, bc, braw = i, c, raw
+			}
+		}
+		if best < 0 || (braw > mergeFree && count <= maxParts) {
+			break
+		}
+		t := twin[best]
+		paired := t >= 0 && groups[t].alive && groups[t].parent != best && groups[best].parent != t
+		merge(best)
+		if paired && groups[t].alive {
+			merge(t)
 		}
 	}
 	for i := 0; i <= nb; i++ {
@@ -220,4 +269,24 @@ func corner(lo, hi [3]float64, c int) [3]float64 {
 		p[2] = hi[2]
 	}
 	return p
+}
+
+// twinName is the name of a bone's mirror twin by the usual naming (left/right, _l/_r), or the
+// name itself when it has no side.
+func twinName(n string) string {
+	switch {
+	case strings.Contains(n, "left"):
+		return strings.Replace(n, "left", "right", 1)
+	case strings.Contains(n, "right"):
+		return strings.Replace(n, "right", "left", 1)
+	case strings.HasSuffix(n, "_l"), strings.HasSuffix(n, ".l"):
+		return n[:len(n)-1] + "r"
+	case strings.HasSuffix(n, "_r"), strings.HasSuffix(n, ".r"):
+		return n[:len(n)-1] + "l"
+	case strings.HasPrefix(n, "l_"):
+		return "r" + n[1:]
+	case strings.HasPrefix(n, "r_"):
+		return "l" + n[1:]
+	}
+	return n
 }
