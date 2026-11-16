@@ -814,6 +814,9 @@ func (b *bot) listEntities() {
 		log.Printf("ENTS %d %s at %.2f %.2f %.2f yaw %.0f head %.0f (%.1f away) moves %d syncs %d dead %v passengers %v equip [%s] data [%s]",
 			e.id, e.typ, e.pos[0], e.pos[1], e.pos[2], e.yaw, e.head, dist(e.pos, b.pos), e.moves, e.syncs, e.dead, e.passengers,
 			strings.Join(eq, " "), strings.Join(meta, " "))
+		if e.typ == "text_display" {
+			rideLine(e)
+		}
 	}
 	log.Printf("ENTS %d entities, %d tab entries", len(es.byID), len(es.tab))
 }
@@ -862,4 +865,42 @@ func textureURL(v string) string {
 		return "not json"
 	}
 	return t.Textures.Skin.URL
+}
+
+// rideLine logs where a riding entity is on a client: a passenger has no position of its own in
+// the packets, it sits on its vehicle (for an interaction entity: on top of its box), and that
+// one on its own vehicle. `RIDE 204 text_display on [96 interaction, 95 item_display]: at x y z`.
+func rideLine(e *botEntity) {
+	vehicle := func(id int32) *botEntity {
+		for _, v := range es.byID {
+			for _, p := range v.passengers {
+				if p == id {
+					return v
+				}
+			}
+		}
+		return nil
+	}
+	var chain []string
+	up := 0.0
+	cur := e
+	for i := 0; i < 8; i++ {
+		v := vehicle(cur.id)
+		if v == nil {
+			break
+		}
+		chain = append(chain, fmt.Sprintf("%d %s", v.id, v.typ))
+		if v.typ == "interaction" {
+			if h, err := strconv.ParseFloat(v.meta[9], 64); err == nil {
+				up += h
+			}
+		}
+		cur = v
+	}
+	if cur == e {
+		log.Printf("RIDE %d %s rides nothing: at %.2f %.2f %.2f", e.id, e.typ, e.pos[0], e.pos[1], e.pos[2])
+		return
+	}
+	log.Printf("RIDE %d %s on [%s]: at %.2f %.2f %.2f (%.2f above the mob's feet)", e.id, e.typ, strings.Join(chain, ", "),
+		cur.pos[0], cur.pos[1]+up, cur.pos[2], up)
 }

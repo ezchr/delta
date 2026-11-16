@@ -75,11 +75,12 @@ func init() {
 		}
 		scale, w, h := me.scale, me.w, me.h
 		readModelMeta(pk.EntityMetadata, &scale, &w, &h)
+		resize := scale != me.scale || w != me.w || h != me.h
 		if scale != me.scale {
 			me.scale = scale
 			p.sendModelData(e, me, false)
 		}
-		if w != me.w || h != me.h {
+		if resize {
 			me.w, me.h = w, h
 			p.sendHitboxData(me)
 		}
@@ -218,19 +219,32 @@ func (p *Player) sendModelData(e *entity, me *modelEntity, full bool) {
 	p.send(v777.ClientboundPlaySetEntityData, w)
 }
 
+// box is the mob's collision box: the width and height of its actor data times its scale. The
+// server sends the box of the entity file as it is (a Decidueye's 0.9 x 3) and the scale next
+// to it (0.65), and a Bedrock client and the server size the box by the scale: asked with a
+// selector volume, the server has that Decidueye's box end 1.95 above its feet, not 3.
+func (me *modelEntity) box() (w, h float32) {
+	s := me.scale
+	if s <= 0 {
+		s = 1
+	}
+	return me.w * s, me.h * s
+}
+
 // sendHitboxData sizes the interaction entity as the Bedrock bounding box.
 func (p *Player) sendHitboxData(me *modelEntity) {
 	if me.hitbox == 0 {
 		return
 	}
+	bw, bh := me.box()
 	w := p.pk()
 	w.VarInt(me.hitbox)
 	w.Byte(interactionWidth)
 	w.VarInt(serFloat)
-	w.Float32(me.w)
+	w.Float32(bw)
 	w.Byte(interactionHeight)
 	w.VarInt(serFloat)
-	w.Float32(me.h)
+	w.Float32(bh)
 	w.Byte(interactionRespond)
 	w.VarInt(serBool)
 	w.Bool(true)

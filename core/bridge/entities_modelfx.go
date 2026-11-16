@@ -27,7 +27,8 @@ import (
 // crosshair" is for living entities only. The bridge works out which custom mob the player
 // looks at (a ray from the eyes along the view, against the mobs' boxes, up to aimNameRange
 // blocks) and shows that mob's name on a text display riding its hitbox, which puts it above
-// the box; it goes when the player looks away. A name the server always shows is on such a
+// the box (the box at the mob's scale: modelEntity.box) and moves it with the mob; it goes when
+// the player looks away. A name the server always shows is on such a
 // display all the time (the mob's own display has the name in its entity data as well, which
 // the client does not draw for a display entity).
 const (
@@ -38,6 +39,10 @@ const (
 	textDisplayText  = 23 // text component
 	displayBillboard = 15 // byte: 3 = faces the camera
 )
+
+// hurtFlashTicks is how long a hurt mob stays red ([core.options] hurt_flash_ticks; half a
+// second as on Java unless set, and longer to look at it at leisure).
+var hurtFlashTicks uint64 = hurtTicks
 
 // tintStack colours a model's item while its mob is hurt.
 func tintStack(js *jitem.Stack, me *modelEntity) {
@@ -136,11 +141,8 @@ func (p *Player) aimedModel() uint64 {
 		if e == nil || !e.spawned || me.hitbox == 0 {
 			continue
 		}
-		scale := float64(me.scale * me.script)
-		if scale <= 0 {
-			scale = 1
-		}
-		w, h := float64(me.w)*scale/2, float64(me.h)*scale
+		bw, bh := me.box()
+		w, h := float64(bw)/2, float64(bh)
 		lo := mgl64.Vec3{e.pos[0] - w, e.pos[1], e.pos[2] - w}
 		hi := mgl64.Vec3{e.pos[0] + w, e.pos[1] + h, e.pos[2] + w}
 		// The ray against the box, axis by axis.
@@ -180,7 +182,8 @@ func (p *Player) showAimName(e *entity, me *modelEntity) {
 	w.UUID(entityUUID(uint64(me.nameTag) | 1<<60))
 	w.VarInt(typ)
 	w.Float64(e.pos[0])
-	w.Float64(e.pos[1] + float64(me.h))
+	_, bh := me.box()
+	w.Float64(e.pos[1] + float64(bh))
 	w.Float64(e.pos[2])
 	w.LpVec3(0, 0, 0)
 	w.Angle(0)
@@ -252,7 +255,7 @@ func init() {
 		default:
 			return
 		}
-		me.tintUntil = p.packs.fxTicks + hurtTicks
+		me.tintUntil = p.packs.fxTicks + hurtFlashTicks
 		p.sendModelTint(e, me)
 	})
 }

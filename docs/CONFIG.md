@@ -122,6 +122,7 @@ same on both transports.
 | `anim_parts` | `24` | The most item displays an animated custom mob is drawn with: a number, or `"all"` for a display per bone that moves (bones that move least are merged into their parents to meet a number). Changing it converts the pack again (another pack hash). |
 | `anim_full_mobs` | `0` | With `anim_parts` a number: this many of the nearest animated mobs are drawn in full detail (as `"all"`), the others merged to `anim_parts`. Needs a second set of part models in the pack. |
 | `login_chunk_radius` | `2` | The chunk radius asked of the server while a player logs in (1 to 16). The server lets the player in once it has sent those chunks, and the rest follow; `16` is the old behaviour, about 3.5 s slower per join. |
+| `hurt_flash_ticks` | `10` | How long a hurt custom mob stays red, in ticks (1 to 200). Java's own flash is 10; a long one is for checking the flash in a client. |
 | `debug_anim` | — | Any value: log when a custom mob's part displays come and go and what its animation controllers play. |
 | `identity_hook` | follows `account_mode` | `"true"`/`"false"`: derived XUID via the hook or not, independent of the Mojang check. Testing only. |
 

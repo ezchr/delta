@@ -91,3 +91,63 @@ func TestModelFx(t *testing.T) {
 		t.Fatal("a name from 24 blocks")
 	}
 }
+
+// TestModelBoxScale: the hitbox of a custom mob is its box at its scale, as the server has it,
+// and it follows a change of the scale; the name display starts on top of that box.
+func TestModelBoxScale(t *testing.T) {
+	p, take := soundPlayer(t, version.Newest)
+	p.rem.jpack = animTestPack()
+	p.mv.yaw = 180
+	meta := protocol.EntityMetadata{protocol.EntityDataKeyName: "Owl", protocol.EntityDataKeyScale: float32(0.65),
+		protocol.EntityDataKeyWidth: float32(0.9), protocol.EntityDataKeyHeight: float32(3)}
+	p.dispatchBedrock(&packet.AddActor{EntityType: "t:walker", EntityRuntimeID: 10, EntityUniqueID: -10, Position: mgl32.Vec3{0, 0, 4}, EntityMetadata: meta})
+	me := p.packs.ents[10]
+	if me == nil || me.hitbox == 0 {
+		t.Fatal("no hitbox")
+	}
+	box := func(out []outPacket) (w, h float32) {
+		for _, o := range out {
+			if o.id != v777.ClientboundPlaySetEntityData {
+				continue
+			}
+			r := wire.NewReader(o.w.B)
+			if r.VarInt() != me.hitbox || r.Byte() != interactionWidth {
+				continue
+			}
+			r.VarInt()
+			w = r.Float32()
+			r.Byte()
+			r.VarInt()
+			h = r.Float32()
+		}
+		return w, h
+	}
+	near := func(a, b float32) bool { return a-b < 1e-4 && b-a < 1e-4 }
+	if w, h := box(take()); !near(w, 0.9*0.65) || !near(h, 3*0.65) {
+		t.Fatalf("hitbox %v x %v, want 0.585 x 1.95", w, h)
+	}
+	p.dispatchBedrock(&packet.SetActorData{EntityRuntimeID: 10, EntityMetadata: protocol.EntityMetadata{protocol.EntityDataKeyScale: float32(1)}})
+	if w, h := box(take()); !near(w, 0.9) || !near(h, 3) {
+		t.Fatalf("hitbox after the scale changed %v x %v, want 0.9 x 3", w, h)
+	}
+	// Looked at: the name display is added on top of the box.
+	p.mv.yaw, p.mv.pitch = 0, 0
+	p.modelFxTick()
+	p.modelFxTick()
+	for _, o := range take() {
+		if o.id == v777.ClientboundPlayAddEntity {
+			r := wire.NewReader(o.w.B)
+			if r.VarInt() != me.nameTag {
+				continue
+			}
+			r.UUID()
+			r.VarInt()
+			r.Float64()
+			if y := r.Float64(); y != 3 {
+				t.Fatalf("name display added at y %v, want 3", y)
+			}
+			return
+		}
+	}
+	t.Fatal("no name display")
+}

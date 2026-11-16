@@ -89,6 +89,10 @@ func Run(c Config, l *jserver.Listener) {
 	debugPackets = option("debug_packets", "") != ""
 	debugAnim = option("debug_anim", "") != ""
 	animOff = option("animations", "on") == "off"
+	hurtFlashTicks = hurtTicks
+	if n, err := strconv.Atoi(strings.TrimSpace(option("hurt_flash_ticks", ""))); err == nil && n >= 1 && n <= 200 {
+		hurtFlashTicks = uint64(n)
+	}
 	// A small radius while logging in: the server lets the player in once it has sent those
 	// chunks (measured on BDS 1.26.60: 1.7 s after the request for radius 2, 5.1 s for 16);
 	// the full radius is asked for right after (remote.go).
