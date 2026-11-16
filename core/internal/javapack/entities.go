@@ -292,6 +292,10 @@ func buildEntity(o *entityOut, lib *anim.Library, maxParts int, full bool) {
 	}
 	k, c := fit(els, true)
 	o.whole = modelJSON(els, o.tex.id, tw, th)
+	if !hasElements(o.whole) {
+		o.err = "geometry has no faces"
+		return
+	}
 	o.ent = Entity{Scale: 1 / k, Translation: [3]float64{-c[0] / 16, c[1] / 16, -c[2] / 16}}
 	if plan == nil {
 		return
@@ -354,7 +358,11 @@ func partModels(o *entityOut, g *geometry, set []anim.PartPlan, tw, th float64, 
 		if len(pels) == 0 {
 			continue
 		}
-		o.parts = append(o.parts, modelJSON(pels, o.tex.id, tw, th))
+		model := modelJSON(pels, o.tex.id, tw, th)
+		if !hasElements(model) {
+			continue // cubes without a face to draw (a client refuses a model with no elements)
+		}
+		o.parts = append(o.parts, model)
 		*moves = *moves || pp.Bone >= 0
 		o.plan = append(o.plan, anim.Part{Bone: pp.Bone, K: pk})
 	}
@@ -407,4 +415,10 @@ func pick(m map[string]string) string {
 		return ""
 	}
 	return m[keys[0]]
+}
+
+// hasElements reports whether a model made by modelJSON draws anything.
+func hasElements(model map[string]any) bool {
+	l, _ := model["elements"].([]any)
+	return len(l) > 0
 }
