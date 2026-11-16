@@ -72,3 +72,76 @@ where the code is, and how to test it.
   model when there is none.
 - 3D held items use only the attachable's first pose; animations and Molang are ignored. Java
   mirrors the pose for the off hand but not the model.
+
+## Leads
+
+- **BDS tells what holds a lead with actor data `LEASH_HOLDER`** (key 37, int64): the holder's
+  unique id, `-1` (or `0`) for none, with the `LEASHED` flag (30) set alongside
+  (`Actor::setLeashHolder`). It is in AddActor's full data and in SetActorData when it changes; BDS
+  1.26.60 also repeats it in a SetActorData right after the AddActor.
+- **Every actor unique id on BDS 1.26.60 is negative**, mobs as well as players (a wandering trader
+  was `-38654705501`). Only `-1` and `0` mean "none"; treating negative ids as none hid every lead.
+- **BDS adds a wandering trader after its trader llamas**, so the holder is often unknown when the
+  leashed mob is added.
+- Java 26.2 and 26.3 take `set_entity_link` (int32 mob id, int32 holder id, 0 for none) after the
+  mob's `add_entity`. The client keeps the id and looks the holder up when it draws the lead
+  (`Leashable.getLeashHolder`), but keeps the entity it found: a holder removed and added again needs
+  the link again. The bridge gives a re-added entity a new Java id anyway.
+- Code: `bridge/entities_leash.go`; `showEntity` sends a mob's lead and the leads of the mobs it
+  holds, `removeEntity` takes those back (holder 0), SetActorData updates it (also before the
+  entity is shown). Tests: `TestLeash`, `TestLeashBeforeSpawn`. Live: jbbot logs `ENT leash A -> B`;
+  stand near a wandering trader.
+
+## Inventory requests and shift-click
+
+- A Java client applies a click itself (shift-click: vanilla `quickMoveStack` - stacks of the item
+  first, then empty slots, the rest stays when room runs out; armour to its empty slot, a shield to
+  the off hand; a crafting table's grid first) and sends the slots it changed. The bridge compares
+  them with the server's slots and sends one ItemStackRequest; a shift-click becomes Place actions
+  from slot to slot (a Bedrock client does the same; the source needn't be the cursor).
+- **BDS 1.26.60 refuses a slot** (49 `FailedToValidateSrcSlot`, 50 `FailedToValidateDstSlot`) when
+  its stack network id isn't the server's (an empty slot is 0; a slot changed earlier in the same
+  request goes by the request id; a still unanswered earlier request's id also works for a few
+  seconds), or when its container isn't part of the open screen: **with no inventory screen open
+  (the HUD screen) every main inventory slot (container 29) is refused** (drops from the hotbar
+  still work).
+  A different item on the destination is 55. Found with a plain Bedrock client sending hand-made
+  requests.
+- **Opening the inventory**: Interact `OpenInventory` is answered by ContainerOpen type `0xff` with a
+  window id from a 1..99 counter, not 0. A second open while it is open is ignored, and so is an open
+  while a container (a chest) is open on the server (`Player::canOpenContainerScreen`). Our
+  ContainerClose with window 0 works; BDS answers with ContainerClose of that window id (type `0xf7`).
+- **A refused request changes nothing and BDS sends nothing**, so a stale stack id or a closed screen
+  made every following click fail the same way (seen: 28 refusals with status 50 in a row, the items
+  jumping back each time).
+- **InventoryTransaction of type mismatch** (no actions) makes BDS send every player inventory again
+  (windows 0, 119, 120, 124) with its current stack ids. After a refusal the bridge sends it (at most
+  every 10 ticks) and opens the inventory screen again before the next click; the inventory screen's
+  window id is kept so a close by that id isn't missed. Two stacks of one item whose counts look
+  exchanged (a full stack shift-clicked onto a partial one with no room for the rest: 64/60 ->
+  60/64) are a move of the difference, not a swap.
+- Not found: what put the owner's session in that state; the translation worked everywhere it was
+  tried (inventory, chest, barrel, shulker box, ender chest, hopper, dropper, crafting table,
+  armour, off hand, rapid clicks and bursts, after creative, death, teleport, game mode changes and
+  block placing).
+- Code: `bridge/inventory.go` (`click`, `plan`, `responses`, `refused`, `openInventory`),
+  `bridge/windows.go` (ContainerOpen/ContainerClose). Tests: `bridge/inventory_quickmove_test.go`.
+
+## jbbot (scripted Java client)
+
+- Build: `cd core && go build -o jbbot ./cmd/jbbot`. Run: `jbbot -addr HOST:PORT -name NAME
+  -blocks <26.3 generated/reports/blocks.json> -jlog -secs 60 -script 'wait 16; inv; click 36 0 1;
+  quit'`. Steps are in the source (`main.go`, `inv.go`, `entities.go`, ...).
+- `-velocity FILE` (Velocity's `forwarding.secret`): the bot answers the `velocity:player_info`
+  login query as the proxy would (HMAC-SHA256 of version 1, address, the offline UUID of `-name`, the
+  name, no properties), so it can join a bridge set up with `velocity_secret(_file)` directly.
+- Inventory steps: `click SLOT BUTTON MODE` (mode 1 = shift-click; the bot moves items as vanilla
+  does, armour and shield rules included), `qclick` (the same without waiting for the answer),
+  `burst S1 S2 ...` (shift-clicks back to back, like a shift-double-click), `inv`, `close`, `hold N`,
+  `useon X Y Z FACE`, `expectslot`. `ents` lists entities; adds and leads are logged as `ENT`.
+- The bot is not an operator: give items and effects from the server console. On a flat world at
+  night mobs push it around; give it resistance and teleport it somewhere quiet (or onto a platform)
+  before clicking blocks.
+- A changed core can be tried without installing it: a small main that imports `core/service` and
+  calls `host.Start` with `{"listen": <another port>, "bedrock": <the server's RakNet address>,
+  "options": {"account_mode": "offline"}}` runs the bridge as a normal process next to the server.
