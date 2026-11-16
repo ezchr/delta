@@ -26,6 +26,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode/utf8"
 
 	jchunk "github.com/ezchr/go-mcjava/chunk"
 	"github.com/ezchr/go-mcjava/server"
@@ -889,4 +890,20 @@ func printable(b []byte) string {
 		}
 	}
 	return strings.TrimSpace(sb.String())
+}
+
+// printableIcons is printable with the characters of the form icon font (the private use area
+// and the CJK and Hangul blocks, three bytes each) written as U+XXXX.
+func printableIcons(b []byte) string {
+	var out []byte
+	for i := 0; i < len(b); {
+		r, n := utf8.DecodeRune(b[i:])
+		if n == 3 && (r >= 0xE000 && r <= 0xF8FF || r >= 0x4E00 && r <= 0x9FFF || r >= 0xAC00 && r <= 0xD7A3) {
+			out = append(out, fmt.Sprintf(" U+%04X ", r)...)
+		} else {
+			out = append(out, b[i:i+n]...)
+		}
+		i += n
+	}
+	return strings.Join(strings.Fields(printable(out)), " ")
 }

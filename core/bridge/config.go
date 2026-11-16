@@ -115,6 +115,7 @@ func Run(c Config, l *jserver.Listener) {
 	if n, err := strconv.Atoi(strings.TrimSpace(option("anim_full_mobs", "0"))); err == nil && n >= 0 {
 		animFullMobs = n
 	}
+	formIconsOn = !strings.EqualFold(strings.TrimSpace(option("form_icons", "on")), "off")
 	captureDir = option("capture_dir", "")
 	running.mu.Lock()
 	running.l = l

@@ -558,13 +558,79 @@ What a Java client does by itself for a living mob, and cannot for one drawn wit
   has the name of the chosen one only (the body's first field, shown as the first body line),
   and for the others a picture code (`i0100`...) for `textures/ui/cobblemon/icons/`. Nothing
   in a pack ties such a code to a name. The player picks "Kanto 2", the dialog comes back with
-  "Charmander No. 0004" and its text, and "I choose you!" takes it. Showing the pictures would
-  need the pack's UI textures as glyphs of a font in the converted pack (a button label is
-  text); not done.
+  "Charmander No. 0004" and its text, and "I choose you!" takes it.
+  The pack's UI textures are glyphs of a font now ("Pictures on
+  form buttons"), but which picture belongs to which button is in the body's fields, as the
+  layout reads them, not in the buttons: not shown.
 - Test: `starterlive.sh` (the bot: `form N` clicks the form's button N). The bot
   saw `> Kanto 1 <, Kanto 2, Kanto 3, Johto 1-3, Hoenn 1-3, I choose you!, Exit, Up, Down`,
   `columns=3`, width 90; `form 1` brought the dialog back with Charmander and `> Kanto 2 <`,
   `form 9` gave "You chose Charmander!".
+
+## Pictures on form buttons
+
+- A Bedrock menu button can have a picture: `"image": {"type": "path", "data":
+  "textures/items/diamond"}` (a texture of the server's packs or of the game) or `{"type":
+  "url", ...}`. A Java dialog button's label is a text component and nothing else, so the
+  picture is a glyph of a font of the converted pack, `delta:icons`
+  (`javapack/icons.go`), in a component of its own before the label (`bridge/forms.go`,
+  `iconLabel`): `{extra: [{text: "<glyph>", font: "delta:icons", color: "white"}, " ", label]}`.
+- **Which textures get a glyph.** A form names its pictures when it is shown, long after the
+  pack was made and loaded, and the scripts that name them are in the behaviour packs (which
+  the bridge does not read) and build the paths (`"icons/" + id`). Adding glyphs later would
+  mean sending the pack again, a reload on the client in the middle of a menu. So the font has
+  every texture a form could name:
+  - the packs' textures in every folder but `entity`, `models`, `particle(s)`, `environment`,
+    `colormap`, `painting`, `persona_thumbnails` and `misc`. Not only `ui`, `items` and
+    `blocks`: a shop add-on keeps its button pictures in `textures/icon/`. Each is drawn into a
+    16 x 16 cell of a sheet of 256 cells (bigger ones cut to what is drawn of them and shrunk,
+    smaller ones enlarged by whole steps, an animation strip of blocks or items its first
+    frame). Empty pictures, dots of 2 x 2 or less and lines thinner than 3 pixels at that size
+    get none. Pictures that come out the same share a glyph.
+  - the game's own item and block textures, by the names Java has them under (the same map as
+    the texture overrides, `textures.go`): the provider points at the client's own file
+    (`"file": "minecraft:item/diamond.png"`), nothing is copied into the pack. Java's
+    animation strips are left out (a bitmap glyph is the whole file).
+  - Bedrock's own UI pictures (`textures/ui/...`) are in no pack and in no Java client. A
+    short list of them has a Java sprite that looks alike (`uiSprites`: check, cancel, arrows,
+    lock, heart, magnifying glass...), and `textures/ui/icon_<item>` is the item. The others
+    have no glyph. The list was written from the names add-ons use, not checked against
+    Bedrock's own files.
+- A glyph is 16 pixels high with 12 above the baseline: a button is 20 high and its text's
+  baseline is 13 below its top, so the picture sits in the middle. The characters are the
+  private use area, then the CJK and Hangul blocks (38500 glyphs; the font is its own, so they
+  mean nothing else). All in the basic plane: a string in network NBT is Java's modified UTF-8.
+  A client reads each provider on its own, so a texture a client version lacks loses that one
+  glyph only (as the client's code read before; not tried with a file that is missing).
+- **No glyph, plain label.** A URL picture (a dialog cannot draw a web picture; downloading
+  it on the server and adding it to the pack would again be a pack sent in the middle of a
+  menu), a texture the font has not, a client that declined or could not load the pack, a
+  server whose packs convert to nothing (no pack is sent then, so the game's own textures have
+  no glyph either), `form_icons = "off"`. A pack that had nothing for Java but has such
+  textures is now worth sending: its players get the pack prompt where they got none.
+- **Not on a screen of the pack's own** (the section above): there a button's image is what the
+  layout makes of it, on the starter screen the slot's frame. As an icon it was a grey square
+  before every "Kanto 2", and the wider buttons made the 3 x 3 grid two columns.
+- **Cost, measured** on the Pokemon add-on's pack (36000 files, 13000 textures outside the
+  folders left out): 12000 textures with a glyph, 10000 glyphs after sharing, 40 sheets, 2.6 MB;
+  the font file with its 2100 providers for the game's textures is 250 KB, 41 KB in the zip.
+  The converted pack went from 25.5 to 28.2 MB (10 %), the conversion from 10 to 13 s (the
+  textures are read on all cores). The pictures at 32 pixels would be about four times the
+  sheets. A client keeps the sheets in memory (256 KB each).
+- The text shadow of a button's label is drawn under the glyph too (a dark copy one pixel down
+  and right). A component can switch it off (`shadow_color`), the text package in use has no
+  such field yet.
+- **Two columns for a long plain menu.** A plain menu (not a screen of the pack's own) with 8
+  buttons or more, each label one line of at most 22 letters (19 beside a picture), is two
+  columns of the client's own 150 pixel buttons: a dialog shows about seven rows before it
+  scrolls. Anything else is one column, as on Bedrock. The buttons fill row by row, so the
+  order reads left to right, then down.
+- Test: `iconlive.sh` opens a script's menu with pictures of the game, of two packs, a URL and
+  an unknown path for the bot, which takes the pack. The bot prints a glyph as `U+XXXX`:
+  `label extra color white text U+E5F2 font delta:icons Diamond`, `label Web` for the URL.
+  `iconrender.py` draws glyphs of a converted pack as mock buttons (the client's own textures
+  from a client jar). Not looked at in a real client: where the glyph sits in the button, its
+  shadow, and how a button with a long label scrolls beside it.
 
 ## Books
 

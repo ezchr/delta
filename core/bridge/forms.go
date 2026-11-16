@@ -7,6 +7,7 @@ import (
 	"math"
 	"strconv"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/ezchr/go-mcjava/text"
 	v777 "github.com/ezchr/go-mcjava/v777"
@@ -27,7 +28,16 @@ import (
 // Every button runs a dynamic/custom action (delta:form) whose payload has the form id and
 // the button plus the input values; the client sends it back as custom_click_action and the
 // bridge answers the server's form with ModalFormResponse. Cancel or Escape answers it as closed.
-// Button images are not shown.
+//
+// A button's picture ("image": a texture path) is a glyph of the converted pack's icon font
+// (javapack/icons.go) before the label, when the client has that pack and the font has the
+// texture; else the label is as it was. A picture from a URL is not shown: a dialog draws text
+// and items, and the pack is made and loaded before a form names its pictures.
+//
+// A form the pack draws as a screen of its own gets none (see there).
+//
+// A plain menu is one column, as on Bedrock; one of menuColumnsFrom buttons or more whose labels
+// are all short is two (menuColumns).
 
 const formAction = ProductName + ":form"
 
@@ -74,6 +84,64 @@ func (p *Player) formScreen(title string) *javapack.FormScreen {
 		}
 	}
 	return nil
+}
+
+// formIconsOn is [core.options] form_icons: the converted pack has the icon font and buttons
+// show their pictures.
+var formIconsOn = true
+
+// formButton is a button as the dialog shows it: its label and its picture's glyph in the icon
+// font (0: none).
+type formButton struct {
+	label string
+	icon  rune
+}
+
+// formIcon is the glyph of a button's picture, 0 when it cannot be shown: no picture or one from
+// a URL, a texture the pack's font has not, or a client that did not load the pack. p.mu is held.
+func (p *Player) formIcon(img formImage) rune {
+	if !formIconsOn || img.Data == "" || strings.EqualFold(img.Type, "url") {
+		return 0
+	}
+	jp := p.packFor()
+	if jp == nil || p.packs.sent == nil || p.packs.sent.sha != jp.sha || p.packs.status != packLoaded {
+		return 0
+	}
+	c, _ := jp.res.Icon(img.Data)
+	return c
+}
+
+// iconLabel is a button's label with its picture before it.
+func iconLabel(label text.Component, icon rune) text.Component {
+	if icon == 0 {
+		return label
+	}
+	// White: the glyph is the picture's own colours whatever the label's colour is.
+	return text.Component{Extra: []text.Component{
+		{Text: string(icon), Font: javapack.IconFont, Color: "white"}, {Text: " "}, label}}
+}
+
+// A plain menu with this many buttons or more goes in two columns when every label fits half
+// the width: a dialog shows about seven buttons before it scrolls.
+const menuColumnsFrom = 8
+
+// menuColumns is how many columns a plain menu's buttons are in: two when there are
+// menuColumnsFrom or more and each label is one line that fits a button of the client's own
+// width (150 pixels: 22 letters, 19 beside a picture), else one, as Bedrock has them.
+func menuColumns(buttons []formButton) int32 {
+	if len(buttons) < menuColumnsFrom {
+		return 1
+	}
+	for _, b := range buttons {
+		room := 22
+		if b.icon != 0 {
+			room = 19
+		}
+		if strings.ContainsAny(b.label, "\n\r") || utf8.RuneCountInString(b.label)-2*strings.Count(b.label, "§") > room {
+			return 1
+		}
+	}
+	return 2
 }
 
 func init() {
@@ -144,7 +212,8 @@ func (p *Player) showForm(pk *packet.ModalFormRequest) {
 	text.BoolTag(w, "pause", false)
 	text.StringTag(w, "after_action", "close")
 
-	var body, buttons []string
+	var body []string
+	var buttons []formButton
 	var buttonIndex []int32 // the form's number of each button shown (nil: its place in buttons)
 	columns, width := int32(1), int32(0)
 	var inputs []formElement
@@ -167,8 +236,10 @@ func (p *Player) showForm(pk *packet.ModalFormRequest) {
 			view := screen.View(javapack.NewFormData(string(bf.Title), content), in)
 			body = view.Body
 			buttonIndex = []int32{}
+			// No pictures here: on a screen of the pack's own a button's image is what the layout
+			// makes of it, mostly the button's face (a slot's frame), not an icon beside a label.
 			for _, b := range view.Buttons {
-				buttons = append(buttons, b.Label)
+				buttons = append(buttons, formButton{label: b.Label})
 				buttonIndex = append(buttonIndex, int32(b.Index))
 			}
 			columns, width = int32(view.Columns), int32(view.Width)
@@ -178,16 +249,17 @@ func (p *Player) showForm(pk *packet.ModalFormRequest) {
 		for _, e := range elems {
 			switch e.Type {
 			case "", "button":
-				buttons = append(buttons, string(e.Text))
+				buttons = append(buttons, formButton{string(e.Text), p.formIcon(e.Image)})
 			case "label", "header":
 				body = appendBody(body, string(e.Text))
 			}
 		}
+		columns = menuColumns(buttons)
 	case "modal":
 		var content string
 		_ = json.Unmarshal(bf.Content, &content)
 		body = appendBody(body, content)
-		buttons = []string{string(bf.Button1), string(bf.Button2)}
+		buttons = []formButton{{label: string(bf.Button1)}, {label: string(bf.Button2)}}
 	case "custom_form":
 		_ = json.Unmarshal(bf.Content, &inputs)
 		for _, e := range inputs {
@@ -203,7 +275,7 @@ func (p *Player) showForm(pk *packet.ModalFormRequest) {
 		writeButton(w, text.Translatable("gui.done"), id, -1)
 	} else {
 		if len(buttons) == 0 {
-			buttons = []string{""}
+			buttons = []formButton{{}}
 		}
 		text.ListStart(w, "actions", text.TagCompound, len(buttons))
 		for i, b := range buttons {
@@ -211,7 +283,7 @@ func (p *Player) showForm(pk *packet.ModalFormRequest) {
 			if buttonIndex != nil {
 				n = buttonIndex[i]
 			}
-			writeButtonWidth(w, labelText(b), id, n, width)
+			writeButtonWidth(w, iconLabel(labelText(b.label), b.icon), id, n, width)
 		}
 	}
 	if bf.Type == "modal" {

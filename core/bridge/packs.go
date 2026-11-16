@@ -48,6 +48,7 @@ import (
 //	               in the dial timeout)
 //	pack_listen    an HTTP address of its own for the Java clients' pack downloads (default: none,
 //	               the Java port serves them, see service/portmux.go)
+//	form_icons     "off": no font of form button pictures in the converted pack (forms.go)
 //	pack_url       public base URL of the downloads (default: the address the player joined with,
 //	               and the Java port, or pack_listen's port)
 //
@@ -268,10 +269,10 @@ func (p *Player) javaPackFor(conn *minecraft.Conn, gd minecraft.GameData, pal *b
 	}
 	sort.SliceStable(packs, func(i, j int) bool { return rank[packs[i].UUID().String()] < rank[packs[j].UUID().String()] })
 
-	in := &javapack.Input{MaxParts: animParts, FullParts: animFullMobs > 0}
+	in := &javapack.Input{MaxParts: animParts, FullParts: animFullMobs > 0, FormIcons: formIconsOn}
 	var names []string
 	key := sha1.New()
-	fmt.Fprintf(key, "v%d|p%d,%v|", javapack.Version, in.MaxParts, in.FullParts)
+	fmt.Fprintf(key, "v%d|p%d,%v|i%v|", javapack.Version, in.MaxParts, in.FullParts, in.FormIcons)
 	for _, pk := range packs {
 		fmt.Fprintf(key, "%s_%s_%d|", pk.UUID(), pk.Version(), pk.Len())
 		names = append(names, pk.Name())
@@ -343,7 +344,7 @@ func (p *Player) javaPackFor(conn *minecraft.Conn, gd minecraft.GameData, pal *b
 		}
 		st := res.Stats
 		p.log.Info("converted resource packs", "packs", strings.Join(names, ", "), "sha1", res.SHA1, "bytes", len(res.Zip),
-			"overrides", st.Overrides, "items", st.Items, "armour", st.Equipment, "held3d", st.Held, "blocks", st.Blocks, "entities", st.Entities, "standins", st.StandIns, "animated", st.Animated, "parts", st.Parts, "full_parts", st.FullParts, "lang", st.LangKeys,
+			"overrides", st.Overrides, "items", st.Items, "armour", st.Equipment, "held3d", st.Held, "blocks", st.Blocks, "entities", st.Entities, "standins", st.StandIns, "animated", st.Animated, "parts", st.Parts, "full_parts", st.FullParts, "lang", st.LangKeys, "form_icons", st.FormIcons, "icon_bytes", st.IconBytes,
 			"took", b.took.Round(time.Millisecond))
 		for _, m := range st.Missing {
 			p.log.Info("resource pack conversion: not converted", "what", m)

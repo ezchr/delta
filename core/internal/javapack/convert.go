@@ -19,7 +19,7 @@ import (
 )
 
 // Version changes when the converter's output changes (part of the conversion cache key).
-const Version = 5
+const Version = 6
 
 // Java 26.3's resource pack format (version.json pack_version.resource_major/minor); 26.2 clients
 // (88) are in the range too.
@@ -48,6 +48,9 @@ type Input struct {
 	// FullParts also makes the full-detail part set (a part for every bone that moves) of the
 	// entities MaxParts merges: Entity.Anim.Full.
 	FullParts bool
+	// FormIcons adds the font of the form icons (icons.go): a glyph for every texture a form's
+	// button could name.
+	FormIcons bool
 	// Description is the pack's description line.
 	Description string
 }
@@ -95,6 +98,10 @@ type Result struct {
 	// FormScreens are the screens a pack draws for server forms (ui/server_form.json): what the
 	// bridge needs to show such a form as text instead of the packed data it carries.
 	FormScreens []FormScreen
+	// FormIcons are the glyphs of the packs' textures in the icon font, by texture path (lower
+	// case, no extension); HasIcons says the pack has that font (see Icon).
+	FormIcons map[string]rune
+	HasIcons  bool
 
 	Stats Stats
 }
@@ -107,8 +114,11 @@ type Stats struct {
 	FullParts                                           int // part models of the full-detail sets
 	StandIns                                            int // entities shown as a Java entity of their vanilla shape
 	AnimBytes                                           int // animation files kept (compressed) for rigs compiled later
-	EntitiesTook                                        time.Duration
-	Missing                                             []string // what could not be converted (first few)
+	// The packs' textures with a glyph in the icon font, the glyphs (like pictures share one)
+	// and the size of their sheets.
+	FormIcons, IconGlyphs, IconBytes int
+	EntitiesTook                     time.Duration
+	Missing                          []string // what could not be converted (first few)
 }
 
 func (s *Stats) miss(format string, a ...any) {
@@ -120,7 +130,7 @@ func (s *Stats) miss(format string, a ...any) {
 // Empty reports whether the conversion made nothing worth sending.
 func (r *Result) Empty() bool {
 	s := r.Stats
-	return s.Overrides+s.Items+s.Blocks+s.Entities+s.StandIns+s.LangKeys == 0
+	return s.Overrides+s.Items+s.Blocks+s.Entities+s.StandIns+s.LangKeys+s.FormIcons == 0
 }
 
 type builder struct {
@@ -181,6 +191,9 @@ func Convert(in *Input) (*Result, error) {
 	start := time.Now()
 	b.entities()
 	b.res.Stats.EntitiesTook = time.Since(start)
+	if in.FormIcons {
+		b.formIcons()
+	}
 	if len(b.lang) > 0 {
 		b.json("assets/"+Namespace+"/lang/en_us.json", b.lang)
 		b.res.Stats.LangKeys = len(b.lang)

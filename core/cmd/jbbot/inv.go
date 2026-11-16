@@ -457,7 +457,7 @@ func invHandle(b *bot, id int32, r *wire.Reader) bool {
 			rr := wire.NewReader(body[i+4:])
 			s.formID = rr.Int32()
 		}
-		log.Printf("DIALOG form %d: %s", s.formID, printable(body))
+		log.Printf("DIALOG form %d: %s", s.formID, printableIcons(body))
 	case v777.ClientboundPlayBlockEvent:
 		x, y, z := r.Position()
 		a, prm := r.Byte(), r.Byte()
