@@ -29,6 +29,9 @@ motd = "A Bedrock server, open to Java Edition"
 #   "online"  - premium (DEFAULT): every Java login is verified with Mojang (encryption +
 #               session-server check). Names cannot be spoofed; each account gets a stable
 #               identity on this server. Works whether this BDS has online-mode true or false.
+#   "hybrid"  - premium + cracked: names of premium Mojang accounts must log in with that
+#               account (they keep their online identity); other names join offline (cracked).
+#               If the name lookup fails and the name is not cached, it is treated as premium.
 #   "offline" - no verification: anyone may join under any name (cracked/private servers only).
 #               A clear warning is logged; staff names can be impersonated.
 account_mode = "online"

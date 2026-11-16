@@ -6,7 +6,7 @@ javabridge is one Endstone plugin. On first start it writes `plugins/javabridge/
 [java]
 listen = "0.0.0.0:25565"   # address Java players connect to
 motd = "A Bedrock server, open to Java Edition"
-account_mode = "online"    # "online" (premium, DEFAULT) or "offline" (see below)
+account_mode = "online"    # "online" (premium, DEFAULT), "hybrid" or "offline" (see below)
 
 [bedrock]
 port = 0                   # this server's own Bedrock port over loopback; 0 = server.properties
@@ -31,6 +31,28 @@ below).
   **stable Bedrock identity** on this server (a derived 16-digit XUID), so player data, permissions
   and bans key on the same id across sessions and the player shows up correctly to real Bedrock
   players. This needs the online-identity hook (bundled; see LOGIN.md).
+* **`hybrid` (premium + cracked players):** like the HybridAuth plugin on a Velocity proxy. At
+  each login the name is looked up with Mojang (`api.minecraftservices.com`, falling back to
+  `api.mojang.com`):
+  * **a premium account's name** must log in the online way (encryption + session-server
+    `hasJoined`). The **verified** profile is used, so the owner gets exactly the identity he has
+    in `online` mode: same Java UUID, same derived XUID, same player data, permissions and skin. A
+    cracked client using a premium name cannot do that login and is refused (a client that tries
+    and fails gets "`<name>` is a premium Minecraft account. Log in with that account to use this
+    name; cracked players must choose another name.").
+  * **any other name** is let in offline as a cracked player: the offline UUID
+    (`OfflinePlayer:<name>`) and a derived XUID from it, so cracked players also keep their data
+    between sessions. Anyone can use a free name — cracked servers need their own password login
+    if that matters.
+
+  Answers are cached in `plugins/javabridge/premium_cache.json` (premium names 24 h, other names
+  1 h; kept up to 30 days as a fallback). **When the lookup fails** (Mojang down, HTTP 429 rate
+  limit, network error, or more than 120 lookups in a minute) the last cached answer is used, even
+  an expired one; with nothing cached the name is treated as **premium** (fail closed: its real
+  owner still gets in, a cracked player with that name is refused until the lookup works). Every
+  decision is logged (`hybrid login: premium name, Mojang login required name=...`,
+  `hybrid login: not a premium name, admitted offline (cracked) ...`,
+  `hybrid login: premium lookup failed ...`, `java login refused: Mojang login failed ...`).
 * **`offline` (opt-in — cracked/private servers):** no verification. Anyone may join under any name.
   A clear warning is logged (`account_mode=offline: Java logins are NOT verified with Mojang ...`).
   The identity is derived from the name only (no XUID), as a stock offline Bedrock login. Use this
@@ -38,6 +60,10 @@ below).
 
 Back-compat: the old boolean option `online_mode` ("true"/"false") still works and maps to
 `online`/`offline`; `account_mode` wins when both are set.
+
+Behind a Velocity proxy with modern forwarding (`velocity_secret`) the proxy authenticates the
+players and the listener does no Mojang checks in any mode; the mode then only picks the identity
+(`online`/`hybrid`: derived XUID, `offline`: none).
 
 ## BIG NOTE: "online mode" means the Java account mode, NOT BDS online-mode
 
@@ -90,7 +116,8 @@ same on both transports.
 | `session_server` | Mojang | Base URL of the session server for premium verification (a custom auth proxy, else Mojang's). |
 | `velocity_secret` / `velocity_secret_file` | — | Behind a Velocity proxy with modern forwarding: the shared `forwarding.secret` (inline or a file path). When set, Velocity verifies the Mojang account and forwards the profile; the Java listener trusts that instead of doing its own handshake, and must be reachable only by the proxy. |
 | `packs` | `off` | Bedrock→Java resource-pack conversion (see PACKS.md). |
-| `java_online`, `identity_hook` | follow `account_mode` | Testing/advanced only: decouple the Java-listener online handshake from the identity hook. Leave unset in production. |
+| `java_online` | follows `account_mode` | Overrides only the Java listener's Mojang check: `"true"` = every login (online), `"false"` or `"hybrid"` = premium names only (**hybrid**: `"false"` no longer lets anyone use a premium name), `"unverified"` = nobody (tests only; anyone can take any name). Leave unset in production. |
+| `identity_hook` | follows `account_mode` | `"true"`/`"false"`: derived XUID via the hook or not, independent of the Mojang check. Testing only. |
 
 ## Namespace
 

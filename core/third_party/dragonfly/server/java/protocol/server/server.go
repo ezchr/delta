@@ -79,6 +79,10 @@ type Config struct {
 	// session server: an offline-mode server that lets anyone in under a free name, but protects
 	// the names of real accounts (staff, players whose data is keyed to them) from impersonation.
 	OnlineModeFor func(name string) bool
+	// AuthFailedMessage, when set, is the disconnect text for a login whose session-server check
+	// failed ("Failed to verify username!" if nil). (javabridge: hybrid mode explains that the name
+	// belongs to a premium account.)
+	AuthFailedMessage func(name string) string
 	// VelocitySecret, when set, takes each player's profile and address from a Velocity proxy's
 	// modern forwarding (signed with this secret, Velocity's forwarding.secret) instead of the client:
 	// the proxy authenticated them. OnlineMode must be off, and only the proxy may reach the
@@ -460,6 +464,9 @@ func (l *Listener) login(c *wire.Conn, deadline time.Time, transferred bool) (Pr
 		}
 	case l.cfg.OnlineMode, l.cfg.OnlineModeFor != nil && l.cfg.OnlineModeFor(name):
 		if prof, err = l.authenticate(c, name, deadline); err != nil {
+			// javabridge: a refused Mojang login is worth an info line (a cracked client using a
+			// premium name usually just closes the connection at the encryption request).
+			l.cfg.Log.Info("java login refused: Mojang login failed", "name", name, "addr", c.NetConn().RemoteAddr().String(), "err", err)
 			return Profile{}, "", err
 		}
 	}

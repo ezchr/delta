@@ -7,7 +7,8 @@ How a Java player's loopback connection becomes a correctly identified, stably-k
 Two unrelated settings share the name "online mode":
 
 * **javabridge `account_mode`** (`plugins/javabridge/config.toml`) — premium Mojang verification of
-  **Java** players. Default `online`. This is what "online" means throughout this document.
+  **Java** players. Default `online`; `hybrid` verifies only premium names; `offline` none. This is
+  what "online" means throughout this document.
 * **BDS `server.properties online-mode`** — Xbox verification of **Bedrock** logins. **Keep it
   `false`** (Endstone's default). See below.
 
@@ -90,6 +91,34 @@ stable XUID and BDS UUID from. So a player cannot claim another player's Java na
 login is refused at the Java login, and the identity toward BDS is always the verified one. Behind a
 Velocity proxy with modern forwarding (`velocity_secret`), Velocity does the Mojang verification and
 forwards the signed profile instead, which the Java listener trusts.
+
+## Hybrid: premium names verified, other names cracked
+
+`account_mode=hybrid` (`core/service/premium_names.go`, `account_mode.go`) sets the listener's
+`OnlineModeFor` to a Mojang name lookup instead of `OnlineMode`:
+
+1. The client's login hello carries a name. The core asks Mojang's profile lookup
+   (`api.minecraftservices.com/minecraft/profile/lookup/name/<name>`, then
+   `api.mojang.com/users/profiles/minecraft/<name>`): 200 with a profile = premium, 204/404 = no
+   such account; anything else is a failure. Answers are cached (premium 24 h, others 1 h,
+   `premium_cache.json` in the plugin folder).
+2. **Premium name:** the listener runs the online path above (encryption + `hasJoined`), and the
+   verified profile replaces the hello's name/UUID. `OnlineIdentity` then derives the XUID from
+   the verified UUID, so the player has the same BDS identity as with `account_mode=online`
+   (Ezchr: `2535483566072468`, not the offline-UUID one `2535905407707780`). A cracked client
+   cannot answer the encryption request with a Mojang session and is not admitted; one that sends
+   a key without a session is refused with a text that says the name belongs to a premium account.
+   Name case does not matter (the lookup is case-insensitive), so `ezchr` is protected too.
+3. **Other name:** admitted offline with `OfflineUUID(name)`; `OnlineIdentity` derives a stable XUID
+   from that UUID. Offline UUIDs are version 3 and premium UUIDs version 4, so the two never give
+   the same XUID.
+4. **Lookup failure** (network, 5xx, 429, our own 120-per-minute limit): the last cached answer is
+   used even if expired; with none the name is treated as premium (fail closed). A premium player
+   is never turned into an offline identity by an outage; the cost is that an unknown cracked name
+   cannot join until the lookup works again. Logged as `hybrid login: premium lookup failed ...`.
+
+With Velocity modern forwarding the proxy does all of this (HybridAuth) and the listener trusts the
+forwarded profile, in every account mode.
 
 ## Versions and failure (fail-safe)
 

@@ -22,10 +22,10 @@ func init() { bridgeStarter = startBridge }
 
 // bridgeService is the running bridge: the Java listener and bridge.Run.
 type bridgeService struct {
-	logs   *host.Logs
-	l      *jserver.Listener
-	done   chan struct{}
-	secret string // per-start trust secret the plugin reads with jb_call("identity_secret")
+	logs      *host.Logs
+	l         *jserver.Listener
+	done      chan struct{}
+	secret    string // per-start trust secret the plugin reads with jb_call("identity_secret")
 	namespace string
 }
 
@@ -41,23 +41,15 @@ func startBridge(cfg Config, logs *host.Logs) (host.Service, error) {
 		motd = "A Bedrock server"
 	}
 	maxPlayers := cfg.MaxPlayers
-	// Account mode: "online" (premium, the default) verifies every Java login with Mojang
-	// (encryption + session-server hasJoined) and gives a stable BDS identity via the hook;
+	// Account mode (account_mode.go): "online" (premium, the default) verifies every Java login
+	// with Mojang and gives a stable BDS identity via the hook; "hybrid" verifies only the names of
+	// premium accounts (their owners keep their online identity) and lets other names in offline;
 	// "offline" lets anyone join under any name (cracked/private servers) and is opt-in.
-	accountMode := strings.ToLower(strings.TrimSpace(opt("account_mode")))
-	if accountMode == "" {
-		// Back-compat: the old online_mode option, else the premium default.
-		if v := strings.TrimSpace(opt("online_mode")); v != "" {
-			if strings.EqualFold(v, "true") {
-				accountMode = "online"
-			} else {
-				accountMode = "offline"
-			}
-		} else {
-			accountMode = "online"
-		}
+	acct := resolveAccountMode(opt)
+	accountMode := acct.Mode
+	if acct.Unknown != "" {
+		log.Warn("unknown account_mode, using online", "value", acct.Unknown)
 	}
-	premium := accountMode != "offline"
 	// Velocity modern forwarding: behind a Velocity proxy, the proxy verifies the Mojang
 	// account and forwards the verified profile signed with a shared secret. When set, the Java
 	// listener trusts that instead of doing its own online handshake (the listener must then be
@@ -72,20 +64,11 @@ func startBridge(cfg Config, logs *host.Logs) (host.Service, error) {
 			log.Error("could not read velocity_secret_file", "file", f, "err", err)
 		}
 	}
-	// Advanced/test overrides: run OnlineIdentity (the hook) while the Java listener stays
-	// offline, so the hook can be exercised with an offline Java test client. Not for normal
-	// use - a production server keeps both tied to account_mode.
-	javaOnline := premium
-	if v := strings.TrimSpace(opt("java_online")); v != "" {
-		javaOnline = strings.EqualFold(v, "true")
-	}
-	useHook := premium
-	if v := strings.TrimSpace(opt("identity_hook")); v != "" {
-		useHook = strings.EqualFold(v, "true")
-	}
-	if !premium {
-		log.Warn("account_mode=offline: Java logins are NOT verified with Mojang - any player can join "+
-			"under any name, including staff names. Use online (the default) unless this is a private/cracked server.")
+	useHook := acct.Hook
+	if acct.JavaAuth == javaAuthNone && len(veloSecret) == 0 {
+		log.Warn("account_mode=offline: Java logins are NOT verified with Mojang - any player can join " +
+			"under any name, including staff names and premium players' names. Use online (the default), or " +
+			"hybrid to let cracked players in while premium names keep their identity.")
 	}
 	// Identity provider and the per-start trust secret the hook needs. Generated once per start
 	// (so it changes on every reload); the plugin reads it with jb_call("identity_secret").
@@ -108,17 +91,22 @@ func startBridge(cfg Config, logs *host.Logs) (host.Service, error) {
 		identity = bridge.OnlineIdentity{Secret: secret, Namespace: ns}
 		namespaceStr = ns.String()
 	}
-	l, err := jserver.Listen(cfg.Listen, jserver.Config{
+	jcfg := jserver.Config{
 		CompressionThreshold: 256,
 		Brand:                bridge.ProductName,
-		OnlineMode:           javaOnline && len(veloSecret) == 0,
 		VelocitySecret:       veloSecret,
 		SessionServer:        opt("session_server"),
 		Log:                  log.With("part", "java login"),
 		Status: func() jserver.Status {
 			return jserver.Status{MOTD: motd, MaxPlayers: maxPlayers, Online: bridge.Online()}
 		},
-	})
+	}
+	var names *premiumNames
+	if acct.JavaAuth == javaAuthPremium && len(veloSecret) == 0 {
+		names = newPremiumNames(log.With("part", "java login"), premiumCacheFile(cfg.DataDir), nil)
+	}
+	applyJavaAuth(&jcfg, acct, names)
+	l, err := jserver.Listen(cfg.Listen, jcfg)
 	if err != nil {
 		return nil, fmt.Errorf("java listener on %s: %w", cfg.Listen, err)
 	}
@@ -136,7 +124,8 @@ func startBridge(cfg Config, logs *host.Logs) (host.Service, error) {
 		defer close(s.done)
 		bridge.Run(bc, l)
 	}, nil)
-	log.Info("Java listener started", "addr", l.Addr().String(), "bedrock", cfg.Bedrock, "account_mode", accountMode)
+	log.Info("Java listener started", "addr", l.Addr().String(), "bedrock", cfg.Bedrock, "account_mode", accountMode,
+		"mojang_check", acct.JavaAuth, "velocity", len(veloSecret) > 0, "stable_xuid", useHook)
 	return s, nil
 }
 
