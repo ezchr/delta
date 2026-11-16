@@ -510,6 +510,10 @@ type packState struct {
 	failed    bool  // declined or failed: item models are not used
 	// ents are the custom entities shown with a model, by runtime id (entities_custom.go).
 	ents map[uint64]*modelEntity
+	// animTicks counts ticks for the animation steps; animRankNow: choose the mobs to animate at
+	// the next tick (entities_anim.go).
+	animTicks   uint64
+	animRankNow bool
 }
 
 // Java resource_pack statuses.

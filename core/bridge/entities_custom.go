@@ -14,7 +14,8 @@ import (
 // with an interaction entity riding it as the hitbox (attacks and uses on it reach the actor:
 // p.ents.byJava has the hitbox too). The display is the actor's Java entity, so moves, removal,
 // names and riders go through the normal entity code; the display transformation puts the model
-// where the Bedrock model is and follows the actor's scale. Models are not animated, and their
+// where the Bedrock model is and follows the actor's scale. A model with animations is shown part
+// by part instead while the player is near (entities_anim.go). The display's
 // pitch is kept at 0 (Bedrock sends the head's pitch; a display would tilt the whole model).
 //
 // This file's handlers run before entities_spawn/_move/_meta's (file order), so they can change
@@ -35,20 +36,24 @@ const (
 // modelEntity is a shown custom entity (p.packs.ents by runtime id).
 type modelEntity struct {
 	m      javapack.Entity
-	hitbox int32   // the interaction entity's Java id
-	scale  float32 // Bedrock scale metadata
-	w, h   float32 // Bedrock bounding box
+	hitbox int32      // the interaction entity's Java id
+	scale  float32    // Bedrock scale metadata
+	w, h   float32    // Bedrock bounding box
+	script float32    // the entity file's scripts.scale (1: none)
+	anim   *modelAnim // nil: the model has no scripts (entities_anim.go)
 }
 
 func init() {
 	OnBedrock(packet.IDAddActor, (*Player).addModelActor)
 	OnBedrock(packet.IDMoveActorAbsolute, func(p *Player, pk *packet.MoveActorAbsolute) {
-		if _, ok := p.packs.ents[pk.EntityRuntimeID]; ok {
+		if me, ok := p.packs.ents[pk.EntityRuntimeID]; ok {
+			me.setPitch(pk)
 			pk.Rotation[0] = 0
 		}
 	})
 	OnBedrock(packet.IDMoveActorDelta, func(p *Player, pk *packet.MoveActorDelta) {
-		if _, ok := p.packs.ents[pk.EntityRuntimeID]; ok {
+		if me, ok := p.packs.ents[pk.EntityRuntimeID]; ok {
+			me.setPitch(pk)
 			if _, has := pk.RotationX.Value(); has {
 				pk.RotationX = protocol.Option(float32(0))
 			}
@@ -132,7 +137,9 @@ func (p *Player) addModelActor(pk *packet.AddActor) {
 	if !p.trackEntity(e) {
 		return
 	}
-	me := &modelEntity{m: m, scale: 1, w: 0.6, h: 1.8}
+	me := &modelEntity{m: m, scale: 1, script: 1, w: 0.6, h: 1.8}
+	me.anim = p.newModelAnim(e, m.Anim)
+	p.packs.animRankNow = p.packs.animRankNow || me.anim != nil
 	readModelMeta(meta, &me.scale, &me.w, &me.h)
 	if p.packs.ents == nil {
 		p.packs.ents = map[uint64]*modelEntity{}
@@ -180,15 +187,18 @@ func (p *Player) sendModelData(e *entity, me *modelEntity, full bool) {
 		var js jitem.Stack
 		js.Reset()
 		js.ID, js.Count = javaPaper, 1
+		if me.anim != nil && me.anim.parts != nil {
+			js.Count = 0 // its parts are displays of their own
+		}
 		js.ItemModel = me.m.Model
 		js.Add(jitem.CompItemModel)
 		js.EncodeFor(w, p.win.proto())
 	}
-	s := float32(me.m.Scale) * me.scale
+	s := float32(me.m.Scale) * me.scale * me.script
 	w.Byte(displayTranslation)
 	w.VarInt(serVector3Data)
 	for _, v := range me.m.Translation {
-		w.Float32(float32(v) * me.scale)
+		w.Float32(float32(v) * me.scale * me.script)
 	}
 	w.Byte(displayScaleIdx)
 	w.VarInt(serVector3Data)
@@ -226,6 +236,7 @@ func (p *Player) dropModelEntity(rid uint64) {
 		return
 	}
 	delete(p.packs.ents, rid)
+	p.dropAnimParts(p.ents.shown[rid], me)
 	if me.hitbox == 0 {
 		return
 	}
@@ -237,4 +248,19 @@ func (p *Player) dropModelEntity(rid uint64) {
 	w.VarInt(1)
 	w.VarInt(me.hitbox)
 	p.send(v777.ClientboundPlayRemoveEntities, w)
+}
+
+// setPitch keeps the head pitch of a move for the animation (the display stays level).
+func (me *modelEntity) setPitch(pk any) {
+	if me.anim == nil {
+		return
+	}
+	switch pk := pk.(type) {
+	case *packet.MoveActorAbsolute:
+		me.anim.pitch = pk.Rotation[0]
+	case *packet.MoveActorDelta:
+		if v, ok := pk.RotationX.Value(); ok {
+			me.anim.pitch = v
+		}
+	}
 }

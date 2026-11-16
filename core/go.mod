@@ -14,6 +14,7 @@ require (
 )
 
 require (
+	delta/packconv v0.0.0
 	github.com/coder/websocket v1.8.14 // indirect
 	github.com/coreos/go-oidc/v3 v3.17.0 // indirect
 	github.com/df-mc/go-playfab/v2 v2.0.2 // indirect
@@ -50,3 +51,5 @@ require (
 replace github.com/df-mc/dragonfly => ./third_party/dragonfly
 
 replace github.com/sandertv/gophertunnel => ./third_party/gophertunnel
+
+replace delta/packconv => ../packconv

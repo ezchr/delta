@@ -449,6 +449,7 @@ func (p *Player) sendPassengers(v *entity) {
 	if v.tag.display != 0 {
 		n++ // a player's name tag display rides it too (entities_nametags.go)
 	}
+	n += len(v.parts)
 	w.VarInt(int32(n))
 	for _, u := range v.riders {
 		if id, ok := p.uniqueJavaID(u); ok {
@@ -457,6 +458,9 @@ func (p *Player) sendPassengers(v *entity) {
 	}
 	if v.tag.display != 0 {
 		w.VarInt(v.tag.display)
+	}
+	for _, id := range v.parts {
+		w.VarInt(id)
 	}
 	p.send(v777.ClientboundPlaySetPassengers, w)
 }

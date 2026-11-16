@@ -125,6 +125,9 @@ type Options struct {
 	Bones map[string]bool // only these bones (lower case); nil all
 	Skip  map[string]bool // bones whose rotation is ignored
 	Post  Mat             // turned by this after (zero: identity)
+	// Pose is an animation pose by bone (lower case), in the animation's own terms: Rot is added
+	// to the bone's rotation, Pos moves it, Scale scales it about its pivot.
+	Pose map[string]BonePose
 }
 
 // Quads builds the geometry's faces in Java model space (x negated). tex is the texture.
@@ -147,6 +150,14 @@ func (g *BedrockGeometry) Quads(tex *image.NRGBA, o Options) []Quad {
 		r := b.Rotation
 		if o.Skip[k] {
 			r = [3]float64{}
+		}
+		if bp, ok := o.Pose[k]; ok {
+			r = [3]float64{r[0] + bp.Rot[0], r[1] + bp.Rot[1], r[2] + bp.Rot[2]}
+			t = t.then(affine{m: Ident, t: Vec(bp.Pos)})
+			t = t.then(about(Vec(b.Pivot), bedrockRot(r)))
+			t = t.then(about(Vec(b.Pivot), Mat{{bp.Scale[0], 0, 0}, {0, bp.Scale[1], 0}, {0, 0, bp.Scale[2]}}))
+			cache[k] = t
+			return t
 		}
 		t = t.then(about(Vec(b.Pivot), bedrockRot(r)))
 		cache[k] = t
@@ -269,4 +280,9 @@ func (g *BedrockGeometry) Quads(tex *image.NRGBA, o Options) []Quad {
 		}
 	}
 	return out
+}
+
+// BonePose is one bone's animated values (Bedrock animation terms).
+type BonePose struct {
+	Rot, Pos, Scale [3]float64
 }

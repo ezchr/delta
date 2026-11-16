@@ -83,6 +83,8 @@ func Run(c Config, l *jserver.Listener) {
 	resetPackConfig()
 	debugChunks = option("debug_chunks", "") == "1"
 	debugPackets = option("debug_packets", "") != ""
+	debugAnim = option("debug_anim", "") != ""
+	animOff = option("animations", "on") == "off"
 	captureDir = option("capture_dir", "")
 	running.mu.Lock()
 	running.l = l

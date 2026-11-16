@@ -39,6 +39,7 @@ type botEntity struct {
 	passengers []int32
 	name       string // custom name
 	attrs      map[string]float64
+	anim       *displayAnim // anim.go
 }
 
 var entityNames = func() map[int32]string {
@@ -203,6 +204,12 @@ func (b *bot) entityPacket(id int32, body []byte) {
 		if e := es.byID[eid]; e != nil {
 			e.yaw, e.pitch = yaw, pitch
 			e.moves++
+			if e.typ == "item_display" {
+				if e.anim == nil {
+					e.anim = &displayAnim{distinct: map[string]bool{}}
+				}
+				e.anim.rots++
+			}
 		}
 		es.counts["rot"]++
 	case v777.ClientboundPlayEntityPositionSync:
@@ -268,7 +275,9 @@ func (b *bot) entityPacket(id int32, body []byte) {
 			return
 		}
 		es.counts["data"]++
-		if eid != 1 {
+		if animData(e, parts) {
+			es.counts["anim"]++
+		} else if eid != 1 {
 			typ := "?"
 			if e != nil {
 				typ = e.typ
@@ -673,6 +682,11 @@ func (b *bot) entityStep(cur []string) (time.Duration, bool) {
 	case "ents":
 		b.mu.Lock()
 		b.listEntities()
+		b.mu.Unlock()
+		return 0, true
+	case "animstat":
+		b.mu.Lock()
+		b.animStat()
 		b.mu.Unlock()
 		return 0, true
 	case "expectent":

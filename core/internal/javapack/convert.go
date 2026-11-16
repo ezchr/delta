@@ -14,10 +14,12 @@ import (
 	"sort"
 	"strings"
 	"time"
+
+	"delta/core/internal/anim"
 )
 
 // Version changes when the converter's output changes (part of the conversion cache key).
-const Version = 2
+const Version = 3
 
 // Java 26.3's resource pack format (version.json pack_version.resource_major/minor); 26.2 clients
 // (88) are in the range too.
@@ -40,6 +42,8 @@ type Input struct {
 	// Slots are the free Java block states custom blocks may be drawn on, in order of preference
 	// (see Candidates).
 	Slots []Slot
+	// MaxParts is the most displays an animated entity is split into (0: anim.MaxParts).
+	MaxParts int
 	// Description is the pack's description line.
 	Description string
 }
@@ -63,6 +67,9 @@ type Entity struct {
 	Scale       float64    // display scale (the model was shrunk by 1/Scale to fit Java's box)
 	Translation [3]float64 // display translation, blocks
 	Name        string     // the lang name ("" if none)
+	// Anim is set for an entity whose file has scripts: its rig (scripts.scale, animations) and,
+	// when animations move it, the per-part models (Anim.Moves).
+	Anim *anim.Model
 }
 
 // Result is a converted pack.
@@ -87,6 +94,8 @@ type Result struct {
 type Stats struct {
 	Packs, Overrides, Items, Blocks, Entities, LangKeys int
 	Equipment, Held                                     int      // armour pieces with a layer, 3D held models
+	Animated, Parts                                     int      // entities with animated parts, and their part models
+	AnimBytes                                           int      // animation files kept (compressed) for rigs compiled later
 	Missing                                             []string // what could not be converted (first few)
 }
 

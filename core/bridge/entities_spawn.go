@@ -74,6 +74,9 @@ type entity struct {
 	sentScale float64
 	// attrSpeed, attrJump: the server's movement and horse jump strength (rideable mobs).
 	attrSpeed, attrJump float32
+	// parts are the Java ids of the displays that draw an animated custom mob part by part; they
+	// ride it (entities_anim.go).
+	parts []int32
 	// tag is how a player's name tag is shown (entities_nametags.go).
 	tag nameTag
 }
@@ -300,7 +303,7 @@ func (p *Player) showEntity(e *entity) {
 	}
 	// Riders the client already has (a player's name tag display too), and the vehicle it
 	// rides.
-	if len(e.riders) > 0 || e.tag.display != 0 {
+	if len(e.riders) > 0 || e.tag.display != 0 || len(e.parts) > 0 {
 		p.sendPassengers(e)
 	}
 	if e.t.kind&entPlayer != 0 {

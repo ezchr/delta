@@ -296,42 +296,55 @@ func (g *geometry) elementsWith(pre affine, anim map[string]boneAnim) []element 
 		if b.NeverRender {
 			continue
 		}
-		bt := pre.then(boneT(b, 0))
-		for _, c := range b.Cubes {
-			inf := b.Inflate
-			if c.Inflate != nil {
-				inf = *c.Inflate
-			}
-			mirror := b.Mirror
-			if c.Mirror != nil {
-				mirror = *c.Mirror
-			}
-			lo := [3]float64{-(c.Origin[0] + c.Size[0]) - inf, c.Origin[1] - inf, c.Origin[2] - inf}
-			hi := [3]float64{-c.Origin[0] + inf, c.Origin[1] + c.Size[1] + inf, c.Origin[2] + c.Size[2] + inf}
-			t := bt
-			if c.Rotation != ([3]float64{}) {
-				piv := [3]float64{-c.Origin[0] - c.Size[0]/2, c.Origin[1] + c.Size[1]/2, c.Origin[2] + c.Size[2]/2}
-				if c.Pivot != nil {
-					piv = [3]float64{-c.Pivot[0], c.Pivot[1], c.Pivot[2]}
-				}
-				t = t.then(rotAbout(piv, javaRot(c.Rotation)))
-			}
-			e := element{faces: cubeFaces(c, mirror)}
-			if isIdent(t.r) {
-				e.from, e.to = t.apply(lo), t.apply(hi)
-			} else {
-				ctr := [3]float64{(lo[0] + hi[0]) / 2, (lo[1] + hi[1]) / 2, (lo[2] + hi[2]) / 2}
-				o := t.apply(ctr)
-				k := t.sc()
-				for a := 0; a < 3; a++ {
-					e.from[a] = (lo[a]-ctr[a])*k + o[a]
-					e.to[a] = (hi[a]-ctr[a])*k + o[a]
-				}
-				e.rotated, e.origin = true, o
-				e.rx, e.ry, e.rz = eulerZYX(t.r)
-			}
-			out = append(out, e)
+		out = append(out, boneElements(b, pre.then(boneT(b, 0)))...)
+	}
+	return out
+}
+
+// cubeBox is a cube's box in Java model space before any rotation, inflated.
+func cubeBox(b *geoBone, c *geoCube) (lo, hi [3]float64) {
+	inf := b.Inflate
+	if c.Inflate != nil {
+		inf = *c.Inflate
+	}
+	lo = [3]float64{-(c.Origin[0] + c.Size[0]) - inf, c.Origin[1] - inf, c.Origin[2] - inf}
+	hi = [3]float64{-c.Origin[0] + inf, c.Origin[1] + c.Size[1] + inf, c.Origin[2] + c.Size[2] + inf}
+	return lo, hi
+}
+
+// boneElements converts one bone's cubes, the bone's model transform being bt.
+func boneElements(b *geoBone, bt affine) []element {
+	var out []element
+	for i := range b.Cubes {
+		c := &b.Cubes[i]
+		mirror := b.Mirror
+		if c.Mirror != nil {
+			mirror = *c.Mirror
 		}
+		lo, hi := cubeBox(b, c)
+		t := bt
+		if c.Rotation != ([3]float64{}) {
+			piv := [3]float64{-c.Origin[0] - c.Size[0]/2, c.Origin[1] + c.Size[1]/2, c.Origin[2] + c.Size[2]/2}
+			if c.Pivot != nil {
+				piv = [3]float64{-c.Pivot[0], c.Pivot[1], c.Pivot[2]}
+			}
+			t = t.then(rotAbout(piv, javaRot(c.Rotation)))
+		}
+		e := element{faces: cubeFaces(*c, mirror)}
+		if isIdent(t.r) {
+			e.from, e.to = t.apply(lo), t.apply(hi)
+		} else {
+			ctr := [3]float64{(lo[0] + hi[0]) / 2, (lo[1] + hi[1]) / 2, (lo[2] + hi[2]) / 2}
+			o := t.apply(ctr)
+			k := t.sc()
+			for a := 0; a < 3; a++ {
+				e.from[a] = (lo[a]-ctr[a])*k + o[a]
+				e.to[a] = (hi[a]-ctr[a])*k + o[a]
+			}
+			e.rotated, e.origin = true, o
+			e.rx, e.ry, e.rz = eulerZYX(t.r)
+		}
+		out = append(out, e)
 	}
 	return out
 }
