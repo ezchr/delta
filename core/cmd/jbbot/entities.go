@@ -583,7 +583,12 @@ func readData(r *wire.Reader, ser int32) (string, bool) {
 	case 7:
 		var st jitem.Stack
 		st.Decode(r)
-		return fmt.Sprintf("%dx%s", st.Count, itemNames[st.ID]), r.Err == nil
+		v := fmt.Sprintf("%dx%s", st.Count, itemNames[st.ID])
+		// A display's item: its model, and its custom model data when it has colours (a tint).
+		if d := st.CustomModelData; st.Has(jitem.CompCustomModelData) && len(d.Colors) > 0 {
+			v += fmt.Sprintf("{model %s floats %v colors %06x}", st.ItemModel, d.Floats, d.Colors)
+		}
+		return v, r.Err == nil
 	case 8:
 		return strconv.FormatBool(r.Bool()), true
 	case 9:

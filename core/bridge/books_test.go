@@ -1,7 +1,10 @@
 package bridge
 
 import (
+	"bytes"
 	"testing"
+
+	"github.com/ezchr/go-mcjava/version"
 
 	jitem "github.com/ezchr/go-mcjava/item"
 	"github.com/ezchr/go-mcjava/wire"
@@ -43,6 +46,55 @@ func TestBookContent(t *testing.T) {
 	bookContent(&js, map[string]any{"display": map[string]any{}})
 	if len(js.Raw) != 0 {
 		t.Fatal("a component for an item that is no book")
+	}
+}
+
+// TestBookForOlderClient: a 26.2 client gets the book's content too (the item package leaves raw
+// components out for it), between the components set and the ones removed.
+func TestBookForOlderClient(t *testing.T) {
+	var js jitem.Stack
+	js.Reset()
+	js.ID, js.Count = mustJavaItem("minecraft:written_book"), 1
+	js.CustomName = jitem.Text{Text: "README"}
+	js.Add(jitem.CompCustomName)
+	js.Remove(jitem.CompRepairCost)
+	bookContent(&js, map[string]any{"pages": []any{map[string]any{"text": "page one"}}, "title": "README", "author": "Someone"})
+	removed := js.Removed
+
+	// The newest version: as the item package writes it.
+	var want, got wire.Writer
+	js.EncodeFor(&want, nil)
+	encodeStack(&got, &js, version.Newest)
+	if !bytes.Equal(want.B, got.B) {
+		t.Fatal("the newest version's stack was changed")
+	}
+	// 26.2: the item package's stack has one component, ours two, the second the book's.
+	var lib, old wire.Writer
+	js.EncodeFor(&lib, jitem.For(version.V776))
+	encodeStack(&old, &js, version.V776)
+	if js.Removed != removed {
+		t.Fatal("the stack's removed components were changed")
+	}
+	lr, r := wire.NewReader(lib.B), wire.NewReader(old.B)
+	lr.VarInt()
+	lr.VarInt()
+	if n, nr := lr.VarInt(), lr.VarInt(); n != 1 || nr != 1 {
+		t.Fatalf("the item package wrote %d components, %d removed", n, nr)
+	}
+	libRest := lr.Rest()
+	c := r.VarInt()
+	r.VarInt()
+	if n, nr := r.VarInt(), r.VarInt(); c != 1 || n != 2 || nr != 1 {
+		t.Fatalf("count %d, %d components, %d removed", c, n, nr)
+	}
+	var book wire.Writer
+	book.VarInt(version.V776.BuiltinID("minecraft:data_component_type", "minecraft:written_book_content"))
+	book.Raw(js.Raw[0].Data)
+	rest := r.Rest()
+	// What the item package wrote, with the book before its last byte (the removed component).
+	wantRest := append(append(append([]byte(nil), libRest[:len(libRest)-1]...), book.B...), libRest[len(libRest)-1])
+	if !bytes.Equal(rest, wantRest) {
+		t.Fatalf("stack for 26.2:\n%x\nwant\n%x", rest, wantRest)
 	}
 }
 

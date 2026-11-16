@@ -364,7 +364,7 @@ func (p *Player) writeStack(w *wire.Writer, st protocol.ItemStack) {
 	}
 	js := &p.win.scratch
 	p.javaStack(st, js)
-	js.EncodeFor(w, p.win.proto())
+	encodeStack(w, js, p.ver()) // items_raw.go
 }
 
 // describeStack is a short text of a server stack, for logs.
