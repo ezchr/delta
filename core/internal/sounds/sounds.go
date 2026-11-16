@@ -1,7 +1,7 @@
-// Package sounds holds the data for translating Bedrock sounds and particles to Java 26.3: the
-// Java block sound groups, mob categories, and Geyser's Java -> Bedrock sound and particle
-// mappings reversed (sounds_gen.go, from tools/gensounds). Names are Java registry keys without
-// the minecraft: namespace.
+// Package sounds holds the data for translating Bedrock sounds to Java 26.3: the Java block sound
+// groups, mob categories, and Geyser's Java -> Bedrock sound mappings reversed (sounds_gen.go,
+// from tools/gensounds). Names are Java registry keys without the minecraft: namespace. The
+// particle tables are in internal/particles.
 package sounds
 
 // SoundType is a Java block sound group (net.minecraft.world.level.block.SoundType).
@@ -37,18 +37,6 @@ func EntitySound(entity, event string) (string, bool) {
 // block (or of whichever entity Geyser maps it from).
 func LevelSound(event string) (string, bool) {
 	s, ok := levelSounds[event]
-	return s, ok
-}
-
-// LegacyParticle is the Java particle type of a Bedrock particle type (LevelEvent 0x4000|id).
-func LegacyParticle(id int32) (string, bool) {
-	s, ok := legacyParticles[id]
-	return s, ok
-}
-
-// NamedParticle is the Java particle type of a Bedrock particle effect identifier.
-func NamedParticle(id string) (string, bool) {
-	s, ok := namedParticles[id]
 	return s, ok
 }
 

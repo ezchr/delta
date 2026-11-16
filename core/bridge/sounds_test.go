@@ -313,13 +313,4 @@ func TestSoundTables(t *testing.T) {
 	if !sounds.Hostile("zombie") || sounds.Hostile("cow") {
 		t.Error("hostile table")
 	}
-	for name, id := range map[string]int32{"heart": packet.ParticleTypeHeart, "happy_villager": packet.ParticleTypeVillagerHappy,
-		"angry_villager": packet.ParticleTypeVillagerAngry, "block": packet.ParticleTypeTerrain, "note": packet.ParticleTypeNote} {
-		if got, _ := sounds.LegacyParticle(int32(id)); got != name {
-			t.Errorf("particle type %d: %q, want %q", id, got, name)
-		}
-	}
-	if got, _ := sounds.NamedParticle("minecraft:heart_particle"); got != "heart" {
-		t.Errorf("heart_particle: %q", got)
-	}
 }
