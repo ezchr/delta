@@ -20,6 +20,9 @@ import (
 type respawnState struct {
 	ready   *mgl64.Vec3 // where the server spawns the player, once it said so
 	clicked bool        // the Java player pressed respawn
+	// unconfirmed counts the checks since a Java respawn in which the server had not yet sent a
+	// health above zero (0: confirmed or no respawn pending). See confirmRespawn.
+	unconfirmed int
 }
 
 func init() {
@@ -105,6 +108,8 @@ func (p *Player) respawned(pos mgl64.Vec3, died bool) {
 	if died {
 		r.write(&packet.PlayerAction{EntityRuntimeID: r.gd.EntityRuntimeID, ActionType: protocol.PlayerActionRespawn, BlockFace: -1})
 		p.log.Debug("respawned", "pos", pos)
+		p.respawn.unconfirmed = 1
+		p.confirmRespawn(r)
 	} else {
 		r.write(&packet.Respawn{State: packet.RespawnStateClientReadyToSpawn, EntityRuntimeID: r.gd.EntityRuntimeID})
 	}
@@ -113,6 +118,30 @@ func (p *Player) respawned(pos mgl64.Vec3, died bool) {
 	if p.world != nil && p.world.HasColumn(int(mfloor(pos[0])), int(mfloor(pos[2]))) {
 		p.columnArrived(ChunkPos{int32(int(mfloor(pos[0])) >> 4), int32(int(mfloor(pos[2])) >> 4)})
 	}
+}
+
+// confirmRespawn checks that the server took the respawn: it sends the player's health when it
+// did. A server that still has the player dead ignores everything they do while the Java client
+// walks around alive, so the respawn is asked for again, a few times.
+func (p *Player) confirmRespawn(r *Remote) {
+	p.after(3*time.Second, "respawn check", func() {
+		p.mu.Lock()
+		defer p.mu.Unlock()
+		n := p.respawn.unconfirmed
+		if p.rem != r || r.closed() || n == 0 || p.self.dead {
+			return
+		}
+		if n > 4 {
+			p.log.Warn("the server did not confirm the respawn: the player may still be dead on it")
+			p.respawn.unconfirmed = 0
+			return
+		}
+		p.log.Info("respawn not confirmed by the server yet: asking again", "try", n)
+		r.write(&packet.Respawn{State: packet.RespawnStateClientReadyToSpawn, EntityRuntimeID: r.gd.EntityRuntimeID, Position: vec32(p.self.pos.Add(mgl64.Vec3{0, eyeHeight, 0}))})
+		r.write(&packet.PlayerAction{EntityRuntimeID: r.gd.EntityRuntimeID, ActionType: protocol.PlayerActionRespawn, BlockFace: -1})
+		p.respawn.unconfirmed = n + 1
+		p.confirmRespawn(r)
+	})
 }
 
 // respawnHooks run after a Java respawn was sent (inventories, effects: later milestones).

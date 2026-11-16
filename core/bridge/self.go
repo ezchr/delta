@@ -320,6 +320,9 @@ func (p *Player) setHealth(health, maxHealth float32) {
 	if maxHealth > 0 {
 		s.maxHealth = maxHealth
 	}
+	if health > 0 {
+		p.respawn.unconfirmed = 0 // the server has the player alive (respawn.go)
+	}
 	if health <= 0 && !s.dead {
 		s.dead = true
 		p.log.Debug("died", "pos", s.pos)
