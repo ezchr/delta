@@ -72,7 +72,7 @@ func (p *Player) liquidAim(want string, limit float64) (protocol.BlockPos, mgl32
 // reach is the block reach used for aiming at liquids.
 func (p *Player) reach() float64 {
 	if p.self.mode == GameCreative {
-		return 12
+		return bedrockCreativeRange
 	}
-	return 5
+	return bedrockBlockRange
 }
