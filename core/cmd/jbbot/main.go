@@ -75,15 +75,15 @@ func loadBlocks(file string) {
 		return
 	}
 	solidState = make([]bool, jchunk.VanillaBlockStates)
-	soft := []string{"air", "water", "lava", "short_grass", "tall_grass", "fern", "flower", "dandelion", "poppy", "orchid",
+	soft := []string{"water", "lava", "short_grass", "tall_grass", "fern", "flower", "dandelion", "poppy", "orchid",
 		"allium", "tulip", "daisy", "cornflower", "lily_of_the_valley", "rose_bush", "peony", "lilac", "bush", "sapling",
 		"torch", "vine", "kelp", "seagrass", "sugar_cane", "sign", "button", "pressure_plate", "rail", "dead_bush",
 		"sweet_berry", "wheat", "carrots", "potatoes", "beetroots", "leaf_litter", "dry_grass", "cobweb", "fire",
 		"redstone_wire", "tripwire", "lever", "_mushroom", "snow", "coral_fan", "pink_petals", "wildflowers", "moss_carpet",
-		"_carpet", "glow_lichen", "hanging_roots", "spore_blossom", "structure_void", "light", "grass"}
+		"_carpet", "glow_lichen", "roots", "nether_sprouts", "spore_blossom", "structure_void", "light", "grass"}
 	for n, b := range rep {
 		n = strings.TrimPrefix(n, "minecraft:")
-		solid := true
+		solid := n != "air" && !strings.HasSuffix(n, "_air") // not stairs ("air" is in their name)
 		for _, s := range soft {
 			if strings.Contains(n, s) && n != "grass_block" && n != "snow_block" && !strings.HasSuffix(n, "mushroom_block") {
 				solid = false

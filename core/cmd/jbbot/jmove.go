@@ -44,9 +44,11 @@ var jsim struct {
 	flyAt                                   int
 	jumpUntil                               int
 	gapFrom, gapTo                          int // jump key released in ticks [gapFrom, gapTo) of the run (jg=A:B)
+	snFrom, snTo                            int // shift key held in ticks [snFrom, snTo) of the run (sn=A:B)
 	errTick                                 int
 	errDZ                                   float64
 	jumpFrom                                int     // hold jump from this tick of the run on (j=N)
+	shiftKey                                bool    // the shift key of the tick before: LocalPlayer.aiStep crouches by it
 	turn                                    float32 // yaw change per tick (t=DEG)
 	strafe                                  float32 // xxa: 1 left, -1 right (s=l|r)
 	hColl, minorHColl                       bool
@@ -112,6 +114,7 @@ func jrunStep(b *bot, a []string) time.Duration {
 	jsim.keys = 1 | 0x40
 	jsim.jumpFrom, jsim.turn, jsim.strafe, jsim.errTick, jsim.flyAt, jsim.jumpUntil = 0, 0, 0, 0, 0, 0
 	jsim.gapFrom, jsim.gapTo = 0, 0
+	jsim.snFrom, jsim.snTo = 0, 0
 	for _, w := range a[2:] {
 		switch {
 		case w == "jump":
@@ -136,6 +139,12 @@ func jrunStep(b *bot, a []string) time.Duration {
 			if len(f) == 2 {
 				jsim.gapFrom, _ = strconv.Atoi(f[0])
 				jsim.gapTo, _ = strconv.Atoi(f[1])
+			}
+		case strings.HasPrefix(w, "sn="): // sn=A:B: shift (sneak) held in ticks [A, B) of the run
+			f := strings.SplitN(w[3:], ":", 2)
+			if len(f) == 2 {
+				jsim.snFrom, _ = strconv.Atoi(f[0])
+				jsim.snTo, _ = strconv.Atoi(f[1])
 			}
 		case strings.HasPrefix(w, "jr="): // release jump from that tick on
 			jsim.jumpUntil, _ = strconv.Atoi(w[3:])
@@ -195,6 +204,18 @@ func jsimPacket(b *bot, id int32, body []byte) {
 					loadShapes()
 				}
 				jsim.active = true
+			}
+		}
+		return
+	}
+	if id == v777.ClientboundPlaySetEntityData {
+		// Our own shared flags (entity data 0): the server may end the sprint (LocalPlayer reads
+		// isSprinting from them).
+		r := &wire.Reader{B: body}
+		if r.VarInt() == 1 && r.Byte() == 0 && r.VarInt() == 0 {
+			if fl := r.Byte(); r.Err == nil && jsim.sprinting && fl&0x08 == 0 {
+				jsim.sprinting = false
+				log.Printf("JSIM sprint ended by the server")
 			}
 		}
 		return
@@ -260,7 +281,9 @@ func (b *bot) boxesIn(area aabb) []aabb {
 		for z := z0; z <= z1; z++ {
 			col := b.chunks[[2]int32{int32(x >> 4), int32(z >> 4)}]
 			for y := y0; y <= y1; y++ {
-				var shape byte = 1
+				// A column the client does not have is air to it (ClientChunkCache gives an
+				// empty chunk): a player there falls.
+				var shape byte
 				if col != nil {
 					i := (y - b.minY) >> 4
 					if i < 0 || i >= len(col.Sections) {
@@ -413,6 +436,9 @@ func jsimPhysics(b *bot) bool {
 	if jsim.ticks >= jsim.gapFrom && jsim.ticks < jsim.gapTo {
 		keys &^= 0x10
 	}
+	if keys != 0 && jsim.ticks >= jsim.snFrom && jsim.ticks < jsim.snTo {
+		keys |= 0x20
+	}
 	var xxa float32
 	if keys != 0 {
 		b.yaw += jsim.turn
@@ -425,8 +451,12 @@ func jsimPhysics(b *bot) bool {
 	}
 	forward := keys&1 != 0
 	jumping := keys&0x10 != 0
+	// LocalPlayer.aiStep: crouching is decided before the tick's keys are read (the key of the
+	// tick before), the input is slowed by it.
+	crouching := jsim.shiftKey && !jsim.flying
+	jsim.shiftKey = keys&0x20 != 0
 	// LocalPlayer.aiStep: sprint start (sprint key, forward impulse, food > 6) and stop.
-	if !jsim.sprinting && forward && b.food > 6 && keys&0x40 != 0 && (keys&0x20 == 0 || jsim.flying) { // not while crouching (isMovingSlowly)
+	if !jsim.sprinting && forward && b.food > 6 && keys&0x40 != 0 && !crouching { // not while crouching (isMovingSlowly)
 		jsim.sprinting = true
 	}
 	if jsim.sprinting && (!forward || b.food <= 6 || jsim.hColl && !jsim.minorHColl) {
@@ -467,7 +497,7 @@ func jsimPhysics(b *bot) bool {
 	if xxa != 0 && zza != 0 { // ClientInput: the move vector is normalised
 		xxa, zza = xxa*float32(math.Sqrt2/2), zza*float32(math.Sqrt2/2)
 	}
-	if keys&0x20 != 0 && !jsim.flying { // crouching: LocalPlayer scales the input by sneaking_speed
+	if crouching { // LocalPlayer scales the input by sneaking_speed
 		xxa, zza = xxa*0.3, zza*0.3
 	}
 	zza *= 0.98 // applyInput
