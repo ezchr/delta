@@ -437,8 +437,10 @@ mob of that type is first shown, for its parts' bones only.
   "spawn" only once it has sent the chunks of the radius the client asked for. gophertunnel
   asked for 16: 5.1 s. That put every join at 8 to 8.5 s, right at the waiting room's limit:
   some joins showed it for half a second, some not. Now the login asks for radius 2
-  (`[core.options] login_chunk_radius`) and for 16 as soon as it is in: 1.7 s instead of 5.1,
-  4.5 s for the whole join, all 369 columns still arrive.
+  (`[core.options] login_chunk_radius`) and for 16 as soon as it is in: 1.7 to 2 s instead of
+  5.1, and all 369 columns still arrive. The whole join was 4.5 s in one run and 8.2 s in
+  another, where BDS took 6.1 s to StartGame instead of 3: that part varies and is the
+  server's, so a join can still touch the waiting room.
 - **The first join after a server start** is longer and still shows the waiting room: reading
   the world's packs from disk (4 to 14 s for the 290 MB Cobblemon pack, depending on the file
   cache), then converting them (12 to 18 s). The conversion needs the item and block
