@@ -8,6 +8,7 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/google/uuid"
 	"github.com/sandertv/gophertunnel/minecraft"
 	"github.com/sandertv/gophertunnel/minecraft/resource"
 )
@@ -54,6 +55,17 @@ func serverPackCache(dir minecraft.DirResourcePackCache) minecraft.ResourcePackC
 		return dir
 	}
 	return localCache
+}
+
+// serverHasPack reports whether the pack is in the server's own folders.
+func serverHasPack(id uuid.UUID, version string) bool {
+	c, ok := packCache().(*localPackCache)
+	if !ok {
+		return false
+	}
+	c.index()
+	_, ok = c.paths[strings.ToLower(id.String())+"_"+version]
+	return ok
 }
 
 // IgnoreSize tells the connection a pack from this cache may differ in size from the one the

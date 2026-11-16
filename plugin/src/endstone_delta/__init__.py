@@ -59,6 +59,15 @@ transport = "auto"
 # Or by Beacon's signature, for a Beacon on another machine (Beacon's forwarding.secret):
 # forwarding_secret_file = "forwarding.secret"
 
+[packs]
+# The server's Bedrock resource packs, converted for Java players. They download the result from
+# the Java port above, at the address they joined with: nothing to set up.
+enabled = true
+# Behind Velocity or another Java proxy the Java port is not public: open a port for the downloads.
+# listen = "0.0.0.0:8080"
+# Only if players reach that port at another address than the one they join with:
+# url = "http://play.example.com:8080"
+
 [core]
 # "bridge" (normal) or "spike" (native library self-test).
 mode = "bridge"
@@ -115,6 +124,13 @@ class DeltaPlugin(Plugin):
         # config schema. Default is premium (online).
         account_mode = str(java.get("account_mode", "online")).strip().lower() or "online"
         options.setdefault("account_mode", account_mode)
+        packs = raw.get("packs", {})
+        if "enabled" in packs:
+            options.setdefault("packs", "on" if packs["enabled"] else "off")
+        if packs.get("listen"):
+            options.setdefault("pack_listen", str(packs["listen"]))
+        if packs.get("url"):
+            options.setdefault("pack_url", str(packs["url"]))
         return {
             "mode": core.get("mode", "bridge"),
             "debug": bool(core.get("debug", False)),

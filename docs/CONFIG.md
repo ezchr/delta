@@ -115,9 +115,31 @@ same on both transports.
 | `lang_file` | — | An `en_US.lang` to translate server texts. |
 | `session_server` | Mojang | Base URL of the session server for premium verification (a custom auth proxy, else Mojang's). |
 | `velocity_secret` / `velocity_secret_file` | — | Behind a Velocity proxy with modern forwarding: the shared `forwarding.secret` (inline or a file path). When set, Velocity verifies the Mojang account and forwards the profile; the Java listener trusts that instead of doing its own handshake, and must be reachable only by the proxy. |
-| `packs` | `off` | Bedrock→Java resource-pack conversion (see PACKS.md). |
+| `pack_max_mb` | `100` | Packs bigger than this are not downloaded from the server. Packs in the server's own folders are read from there and have no limit. |
+| `pack_cache_mb` | `512` | Size limit of the pack cache (`plugins/delta/packs`). |
 | `java_online` | follows `account_mode` | Overrides only the Java listener's Mojang check: `"true"` = every login (online), `"false"` or `"hybrid"` = premium names only (**hybrid**: `"false"` no longer lets anyone use a premium name), `"unverified"` = nobody (tests only; anyone can take any name). Leave unset in production. |
 | `identity_hook` | follows `account_mode` | `"true"`/`"false"`: derived XUID via the hook or not, independent of the Mojang check. Testing only. |
+
+## Resource packs (`[packs]`)
+
+```toml
+[packs]
+enabled = true
+# listen = "0.0.0.0:8080"
+# url = "http://play.example.com:8080"
+```
+
+The server's Bedrock packs are converted for Java players (see PACKS.md) and offered with the
+normal Java prompt. A Java client downloads a pack over HTTP, so it needs an address it can reach:
+
+| Setup | What to set |
+|---|---|
+| Players join the Java port directly (also through a port forward, an SRV record, or a TCP tunnel such as playit.gg) | Nothing. The Java port answers the download too, at the address the player joined with. |
+| Players join through Velocity or another Java proxy | `listen`: a port of its own for the downloads, open to players. They use the host they joined with and that port. |
+| That port is reached at another address (a reverse proxy, a CDN) | `url` as well: the public base URL. |
+
+`enabled = false` turns the conversion off. When a player's client cannot download or load the pack,
+the server log has `java client could not use the resource pack` with the address it was given.
 
 ## Namespace
 

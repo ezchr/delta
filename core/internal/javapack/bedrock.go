@@ -30,9 +30,10 @@ type Source struct {
 // maxPackFiles and maxFileSize bound what is read from a pack (a hostile server could send a zip
 // bomb).
 const (
-	maxPackFiles = 20000
+	// Big add-ons are big: a Pokemon pack has 36000 files and 290 MB.
+	maxPackFiles = 300000
 	maxFileSize  = 32 << 20
-	maxPackBytes = 512 << 20
+	maxPackBytes = 2 << 30
 )
 
 // ReadSource reads a Bedrock pack (a zip) of size bytes from r. contentKey is the key the server
@@ -64,7 +65,7 @@ func ReadSource(r io.ReaderAt, size int64, uuid, version, contentKey string) (*S
 		if f.FileInfo().IsDir() || !strings.HasPrefix(name, root) {
 			continue
 		}
-		if f.UncompressedSize64 > maxFileSize {
+		if f.UncompressedSize64 > maxFileSize || unusedFile(name) {
 			continue
 		}
 		rc, err := f.Open()
@@ -97,6 +98,16 @@ func ReadSource(r io.ReaderAt, size int64, uuid, version, contentKey string) (*S
 	}
 	s.Name = m.Header.Name
 	return s, nil
+}
+
+// unusedFile reports whether the converter never looks at a file of this kind: sounds are most of
+// a big pack's size, and are not converted.
+func unusedFile(name string) bool {
+	switch path.Ext(name) {
+	case ".ogg", ".fsb", ".wav", ".mp3", ".mcstructure", ".js", ".psd", ".bbmodel":
+		return true
+	}
+	return false
 }
 
 // contentsMagic is the magic number in an encrypted pack's contents.json header.

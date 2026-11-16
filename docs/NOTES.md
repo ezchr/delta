@@ -67,6 +67,25 @@ where the code is, and how to test it.
 
 ## Resource packs and models
 
+- **A Java client downloads a pack from a URL, and the URL has to work from the player's
+  machine.** Until 0.3.2 packs were off by default and, when on, the URL was `http://127.0.0.1:<random
+  port>`: the prompt showed and the download failed for everyone not on the server machine ("Your
+  client could not load the server's resource pack"). Now the Java port answers HTTP too
+  (`service/portmux.go`: a connection that starts with `GET ` or `HEAD` goes to the pack handler)
+  and each player gets the host and port of their own handshake (`(*Player).packURL`), which also
+  works through port forwards, SRV records and TCP tunnels, and on hosts that give one port. Behind
+  Velocity the handshake address is the proxy's: `[packs] listen` opens a port of its own.
+- **gophertunnel asks `DownloadResourcePack` before it looks in the pack cache.** The size limit for
+  downloads therefore also dropped packs that are in the server's folders and need no download:
+  `packDownload` asks `serverHasPack` first. Seen with the Cobblemon port (186 MB zipped).
+- The converter's own limits were for hostile servers, not for real add-ons: 20000 files refused
+  Cobblemon (36606). Sounds, structures and scripts are not read at all (`unusedFile`).
+- Reading a 290 MB pack folder takes about 15 s on the first Java login after a start (it is zipped
+  in memory); later logins reuse it.
+- Test: a small retexture pack and a big add-on in a test world, the bot (`jbbot -packlist` logs
+  the pack it is pushed, downloads it and checks its JSON), and a static check of the Java zip
+  (resource paths, model parents, texture references).
+
 - Bedrock 3D armour geometry (horns, shoulder pads) can't be drawn by Java's armour layers: sets with
   their own geometry use the 2D textures from the pack's 2D subpack, and a texture is built from the
   model when there is none.

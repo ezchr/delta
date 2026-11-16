@@ -15,9 +15,11 @@ BDS, so commands, permissions, ops and other plugins work on them.
   (XUID) on the server, so ops, permissions and saves stay with them.
 - **Skins:** Java skins (classic or slim arms, and the cape) show to Bedrock players, and Java players
   see each other's skins. Cracked players get Steve.
-- **Resource packs:** the server's Bedrock packs are converted to a Java pack when the server starts:
-  blocks, items, armour, 3D held items (swords, axes and such) and a vanilla-texture fallback for
-  blocks Java doesn't have. Players get the normal Java download prompt.
+- **Resource packs:** the server's Bedrock packs are converted to a Java pack when the first Java
+  player joins: blocks, items, mobs, armour, 3D held items (swords, axes and such) and a
+  vanilla-texture fallback for blocks Java doesn't have. Players get the normal Java download
+  prompt and download from the Java port itself: nothing to set up, unless they join through a
+  Java proxy ([CONFIG.md](docs/CONFIG.md#resource-packs-packs)).
 - **Menus:** Bedrock forms open as Java dialogs; chest menus stay chest menus.
 - **The world:** signs, item frames, floating text, leads, sounds and particles (mapped with
   Geyser's tables), flying, sneaking, sprinting. Block and attack reach match Bedrock's.

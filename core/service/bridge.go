@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"net"
 	"os"
 	"strconv"
 	"strings"
@@ -106,8 +107,14 @@ func startBridge(cfg Config, logs *host.Logs) (host.Service, error) {
 		names = newPremiumNames(log.With("part", "java login"), premiumCacheFile(cfg.DataDir), nil)
 	}
 	applyJavaAuth(&jcfg, acct, names)
-	l, err := jserver.Listen(cfg.Listen, jcfg)
+	// The Java port answers HTTP too: Java clients download the converted resource pack there.
+	ln, err := net.Listen("tcp", cfg.Listen)
 	if err != nil {
+		return nil, fmt.Errorf("java listener on %s: %w", cfg.Listen, err)
+	}
+	l, err := jserver.ListenOn(newPortMux(ln, bridge.PackHandler()), jcfg)
+	if err != nil {
+		_ = ln.Close()
 		return nil, fmt.Errorf("java listener on %s: %w", cfg.Listen, err)
 	}
 	s := &bridgeService{logs: logs, l: l, done: make(chan struct{}), secret: secret, namespace: namespaceStr}

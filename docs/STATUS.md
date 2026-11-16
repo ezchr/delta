@@ -79,8 +79,9 @@ account, but the 1.21->26.3 registry translation drops the client - see docs/LOG
 * Identity: DONE. `OfflineIdentity` (offline) and `OnlineIdentity` (premium, the default): premium
   Mojang verification on the Java side + the bundled xuidforward hook gives each Java player a
   stable derived XUID on an `online-mode=false` BDS. See docs/LOGIN.md, CONFIG.md and Stage 2 below.
-* Resource packs: off by default (`packs = on` in options works as in the original bridge, but the
-  Java client must reach the pack HTTP server: `pack_listen`/`pack_url`). Agent C owns packs.
+* Resource packs: on by default since 0.3.2; the Java port serves the download (CONFIG.md,
+  "Resource packs"). Tested with the test bot on a loopback server with a retexture pack and the
+  Cobblemon Bedrock port (36000 files); not yet looked at in a real Java client.
 * Skins of other players: looked up from a public skin API by XUID; offline Bedrock players have
   none, so they are Steve/Alex.
 * Java players' skins on Bedrock: the Java skin (textures property, else a Mojang name lookup;

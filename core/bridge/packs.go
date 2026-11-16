@@ -41,20 +41,26 @@ import (
 //
 // Settings (Config.Options, or JB_<KEY> in the environment):
 //
-//	packs          "on" to convert and offer the server's packs (default off for now)
+//	packs          "off" to not convert and offer the server's packs (default on)
 //	pack_dir       cache directory (default <data dir>/packs: bedrock/ downloads, java/ built packs)
 //	pack_cache_mb  cache size limit, oldest files go first (default 512)
 //	pack_max_mb    packs bigger than this are not downloaded (default 100: a download must fit
 //	               in the dial timeout)
-//	pack_listen    HTTP address the Java clients download packs from (default 127.0.0.1:0)
-//	pack_url       public base URL of that address (default http://<pack_listen>)
+//	pack_listen    an HTTP address of its own for the Java clients' pack downloads (default: none,
+//	               the Java port serves them, see service/portmux.go)
+//	pack_url       public base URL of the downloads (default: the address the player joined with,
+//	               and the Java port, or pack_listen's port)
+//
+// The download address has to be one the player's machine reaches: see (*Player).packURL.
 
 type packConfig struct {
 	on        bool
 	dir       string
 	limit     int64
-	listen    string
-	url       string
+	listen    string // "" = the Java port serves the packs
+	url       string // "" = made for each player from the address they joined with
+	port      string // pack_listen's port, once it listens
+	proxied   bool   // Java players come through a proxy (Velocity): the Java port is not public
 	maxPack   uint64
 	whyNot    string
 	startOnce sync.Once
@@ -77,7 +83,8 @@ func packCfg() *packConfig {
 		dir = filepath.Join(cfg.DataDir, "packs")
 	}
 	c := &packConfig{dir: dir, limit: 512 << 20,
-		listen: option("pack_listen", "127.0.0.1:0"), url: strings.TrimSuffix(option("pack_url", ""), "/")}
+		listen: option("pack_listen", ""), url: strings.TrimSuffix(option("pack_url", ""), "/"),
+		proxied: option("velocity_secret", "") != "" || option("velocity_secret_file", "") != ""}
 	if n, err := strconv.Atoi(option("pack_cache_mb", "")); err == nil && n > 0 {
 		c.limit = int64(n) << 20
 	}
@@ -86,7 +93,7 @@ func packCfg() *packConfig {
 		c.maxPack = uint64(n) << 20
 	}
 	switch {
-	case !strings.EqualFold(option("packs", "off"), "on"):
+	case strings.EqualFold(option("packs", "on"), "off"):
 		c.whyNot = "packs are off"
 	case c.dir == "":
 		c.whyNot = "no data directory"
@@ -133,8 +140,14 @@ func packDownload(id uuid.UUID, version string, _, _ int) bool {
 	if !packsOn() {
 		return false
 	}
+	// The limit is for downloads: a pack in the server's own folders is read from there, whatever
+	// its size.
+	if serverHasPack(id, version) {
+		return true
+	}
 	if v, ok := packSizes.Load(id.String() + "_" + version); ok && v.(uint64) > packCfg().maxPack {
-		cfg.Log.Info("resource pack too big; not downloaded", "uuid", id, "version", version, "bytes", v, "max", packCfg().maxPack)
+		cfg.Log.Warn("resource pack too big to download and not in the server's folders: Java players do not get it (pack_max_mb raises the limit)",
+			"uuid", id, "version", version, "bytes", v, "max", packCfg().maxPack)
 		return false
 	}
 	return true
@@ -222,7 +235,6 @@ type packBuild struct {
 	res   *javapack.Result // Zip dropped once it is on disk
 	sha   string
 	id    uuid.UUID
-	url   string
 	slots []javapack.Slot
 	state []uint32 // Java state of each slot
 	took  time.Duration
@@ -308,14 +320,13 @@ func (p *Player) javaPackFor(conn *minecraft.Conn, gd minecraft.GameData, pal *b
 		if len(in.Description) > 200 {
 			in.Description = in.Description[:200]
 		}
-		res, err := javapack.Convert(in)
+		res, err := convertSafe(in)
 		if err != nil {
 			p.log.Warn("resource pack conversion failed", "err", err)
 			return nil
 		}
 		b = &packBuild{res: res, sha: res.SHA1, id: uuid.NewSHA1(uuid.NameSpaceURL, []byte(ProductName+"-pack:"+res.SHA1)),
 			slots: in.Slots, state: state, took: time.Since(start)}
-		b.url = packCfg().url + "/" + res.SHA1 + ".zip"
 		if !res.Empty() {
 			if err := storeJavaPack(res.SHA1, res.Zip); err != nil {
 				p.log.Warn("could not store the java pack", "err", err)
@@ -350,6 +361,74 @@ func (p *Player) javaPackFor(conn *minecraft.Conn, gd minecraft.GameData, pal *b
 		pal.SetCustomJava(name, b.state[slot], b.slots[slot].Solid)
 	}
 	return &javaPack{packBuild: b, required: info.required}
+}
+
+// convertSafe is javapack.Convert with a panic (a pack shaped in a way the converter did not
+// expect) turned into an error: the player then joins without the pack instead of not at all.
+func convertSafe(in *javapack.Input) (res *javapack.Result, err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			res, err = nil, fmt.Errorf("panic: %v", r)
+		}
+	}()
+	return javapack.Convert(in)
+}
+
+// packURL is the address this player's client downloads the pack sha from, "" when there is none
+// it could reach.
+//
+//   - pack_url set: that.
+//   - pack_listen set: the host the player joined with and that listener's port.
+//   - neither: the host and port the player joined with, since the Java port serves packs too.
+//     Through a proxy that address is the proxy's, which does not: no pack, and a warning that
+//     says what to set.
+func (p *Player) packURL(sha string) string {
+	c := packCfg()
+	if c.url != "" {
+		return c.url + "/" + sha + ".zip"
+	}
+	host, port := joinedAddress(p.jp.Address, p.jp.Port, p.jp.Conn.NetConn().LocalAddr())
+	if c.port != "" {
+		port = c.port
+	} else if c.proxied {
+		proxyWarn.Do(func() {
+			cfg.Log.Warn("Java players come through a proxy, so they cannot download the resource pack from the Java port. " +
+				"Open a port for it: set [packs] listen (for example \"0.0.0.0:8080\"), and url if the public address differs.")
+		})
+		return ""
+	}
+	if host == "" || port == "" {
+		return ""
+	}
+	return "http://" + net.JoinHostPort(host, port) + "/" + sha + ".zip"
+}
+
+var proxyWarn sync.Once
+
+// joinedAddress is the host and port a client connected to: what its handshake says, cleaned of
+// what mod loaders and SRV records add, else the connection's own local address.
+func joinedAddress(host string, port uint16, local net.Addr) (string, string) {
+	if i := strings.IndexByte(host, 0); i >= 0 {
+		host = host[:i] // Forge appends "\x00FML..."
+	}
+	host = strings.TrimSuffix(strings.TrimSpace(host), ".") // an SRV target ends with a dot
+	ok := host != ""
+	for _, ch := range host {
+		if !(ch >= 'a' && ch <= 'z' || ch >= 'A' && ch <= 'Z' || ch >= '0' && ch <= '9' || ch == '.' || ch == '-' || ch == ':' || ch == '_') {
+			ok = false
+		}
+	}
+	lhost, lport := "", ""
+	if local != nil {
+		lhost, lport, _ = net.SplitHostPort(local.String())
+	}
+	if !ok {
+		host = lhost
+	}
+	if port == 0 {
+		return host, lport
+	}
+	return host, strconv.Itoa(int(port))
 }
 
 // freeSlots are the Java states custom blocks may be drawn on: javapack's candidates the
@@ -417,6 +496,7 @@ func addPackLang(keys map[string]string) {
 // packState is the Java client's pack (p.mu).
 type packState struct {
 	sent   *javaPack // pushed last (nil: none)
+	url    string    // where the client was told to download it
 	status int32     // the client's last answer for it (-1: none yet)
 	failed bool      // declined or failed: item models are not used
 	// ents are the custom entities shown with a model, by runtime id (entities_custom.go).
@@ -457,10 +537,16 @@ func packsTick(p *Player) {
 	if want == nil {
 		return
 	}
+	url := p.packURL(want.sha)
+	if url == "" {
+		p.packs.failed = true // nothing to download it from: items and blocks stay plain
+		return
+	}
+	p.packs.url = url
 	touchJavaPack(want.sha)
 	w := p.pk()
 	w.UUID(want.id)
-	w.String(want.url)
+	w.String(url)
 	w.String(want.sha)
 	w.Bool(want.required)
 	w.Bool(true)
@@ -470,7 +556,7 @@ func packsTick(p *Player) {
 		writeText(w, "§e"+targetName(p.rem.target)+"§r has a resource pack with custom items, blocks and mobs.")
 	}
 	p.send(v777.ClientboundPlayResourcePackPush, w)
-	p.log.Info("sent resource pack", "url", want.url, "required", want.required)
+	p.log.Info("sent resource pack", "url", url, "required", want.required)
 }
 
 // packStatus handles the client's resource_pack answer. p.mu is held.
@@ -488,7 +574,7 @@ func (p *Player) packStatus(id uuid.UUID, status int32) {
 		p.log.Info("java client declined the resource pack", "required", cur.required)
 	case packFailedDL, packInvalidURL, packFailedReload, packDiscarded:
 		p.packs.failed = true
-		p.log.Warn("java client could not use the resource pack", "status", status, "url", cur.url)
+		p.log.Warn("java client could not use the resource pack", "status", status, "url", p.packs.url)
 		p.BridgeMessage("§cYour client could not load the server's resource pack: custom items, blocks and mobs look plain.")
 	}
 }
@@ -545,30 +631,44 @@ func startPackServer(c *packConfig) error {
 		cfg.Log.Warn("resource packs off: cache directory", "err", err)
 		return err
 	}
+	if c.listen == "" {
+		where := "the Java port, at the address each player joined with"
+		if c.url != "" {
+			where = c.url
+		}
+		cfg.Log.Info("resource packs for Java players", "download", where, "dir", c.dir)
+		prunePacks(cfg.Log)
+		return nil
+	}
 	l, err := net.Listen("tcp", c.listen)
 	if err != nil {
 		cfg.Log.Warn("resource packs off: pack server", "addr", c.listen, "err", err)
 		return err
 	}
-	if c.url == "" {
-		host, port, _ := net.SplitHostPort(l.Addr().String())
-		if ip := net.ParseIP(host); ip != nil && ip.IsUnspecified() {
-			cfg.Log.Warn("pack_listen is on every interface: set pack_url to the address clients reach it at")
-			host = "127.0.0.1"
-		}
-		c.url = "http://" + net.JoinHostPort(host, port)
+	host, port, _ := net.SplitHostPort(l.Addr().String())
+	c.port = port
+	if ip := net.ParseIP(host); ip != nil && ip.IsLoopback() && c.url == "" {
+		cfg.Log.Warn("the pack server listens on this machine only: players elsewhere cannot download the resource pack. "+
+			"Use 0.0.0.0 in [packs] listen, or give the public address in url", "listen", l.Addr().String())
 	}
 	srv := &http.Server{
 		Handler:           http.HandlerFunc(servePack),
 		ReadHeaderTimeout: 10 * time.Second,
-		WriteTimeout:      5 * time.Minute,
+		WriteTimeout:      10 * time.Minute,
 	}
 	c.srv = srv
 	goSafe("pack server", func() { _ = srv.Serve(l) }, nil)
-	cfg.Log.Info("resource pack server", "listen", l.Addr().String(), "url", c.url, "dir", c.dir)
+	where := "the address each player joined with, port " + port
+	if c.url != "" {
+		where = c.url
+	}
+	cfg.Log.Info("resource pack server", "listen", l.Addr().String(), "download", where, "dir", c.dir)
 	prunePacks(cfg.Log)
 	return nil
 }
+
+// PackHandler serves the converted packs: the Java port answers HTTP with it.
+func PackHandler() http.Handler { return http.HandlerFunc(servePack) }
 
 func servePack(w http.ResponseWriter, r *http.Request) {
 	m := packFile.FindStringSubmatch(r.URL.Path)
