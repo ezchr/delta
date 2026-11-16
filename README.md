@@ -26,7 +26,8 @@ BDS, so commands, permissions, ops and other plugins work on them.
 
 ## Install
 
-1. Linux x86-64 server with Endstone (plugin API 0.11).
+1. Linux x86-64 server with Endstone 0.11 running BDS 1.26.60 (tested on Endstone 0.11.15,
+   BDS 1.26.60.6). Delta speaks the 1.26.60 Bedrock protocol, so it needs that BDS version.
 2. Put `endstone_delta-<version>-py3-none-linux_x86_64.whl` in the server's `plugins/` folder.
 3. Keep `online-mode=false` in `server.properties` (Endstone's default). Delta checks Java accounts
    itself; BDS's own online mode would refuse Java players.
@@ -64,8 +65,8 @@ Delta includes [xuidforward](https://github.com/ezchr/xuidforward). If you use i
 - Bedrock's 3D armour shapes (horns, shoulder pads) show as flat armour on Java.
 - Add-on particles and a few Bedrock-only ones have no Java equivalent and are skipped.
 - Skin lookups for cracked players' names can hit Mojang's rate limit and fall back to Steve.
-- The identity hook supports BDS 1.26.60.6 and 1.26.51.1. On another build everything works
-  except stable XUIDs, until a profile for that build is added.
+- Only tested on Endstone 0.11.15 with BDS 1.26.60.6. A new BDS build also needs a new profile
+  for the identity hook; until then players join without stable XUIDs.
 
 ## Documentation
 
