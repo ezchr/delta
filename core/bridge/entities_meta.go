@@ -84,6 +84,9 @@ func init() {
 		e.flags, _ = e.meta[protocol.EntityDataKeyFlags].(int64)
 		e.flags2, _ = e.meta[protocol.EntityDataKeyFlagsTwo].(int64)
 		propsChanged := p.applyProps(e, pk.EntityProperties)
+		if _, ok := pk.EntityMetadata[protocol.EntityDataKeyLeashHolder]; ok {
+			p.updateLeash(e) // also before the spawn: showEntity sends what it has then
+		}
 		if !e.spawned {
 			return
 		}
@@ -97,15 +100,6 @@ func init() {
 		}
 		if _, ok := pk.EntityMetadata[protocol.EntityDataKeyFlags]; ok && e.t.kind&entMob != 0 {
 			p.sendSaddle(e) // saddled is a flag on Bedrock, equipment on Java
-		}
-		if v, ok := pk.EntityMetadata[protocol.EntityDataKeyLeashHolder].(int64); ok {
-			if v < 0 {
-				v = 0
-			}
-			if v != e.leash {
-				e.leash = v
-				p.sendLeash(e)
-			}
 		}
 	})
 	OnBedrock(packet.IDUpdateAttributes, func(p *Player, pk *packet.UpdateAttributes) {
@@ -666,20 +660,4 @@ func (p *Player) sendSaddle(e *entity) {
 		jitem.WriteEmpty(w)
 	}
 	p.send(v777.ClientboundPlaySetEquipment, w)
-}
-
-// sendLeash sends a mob's leash (set_entity_link: holder 0 for none).
-func (p *Player) sendLeash(e *entity) {
-	holder := int32(0)
-	if e.leash != 0 {
-		id, ok := p.uniqueJavaID(e.leash)
-		if !ok {
-			return
-		}
-		holder = id
-	}
-	w := p.pk()
-	w.Int32(e.id)
-	w.Int32(holder)
-	p.send(v777.ClientboundPlaySetEntityLink, w)
 }

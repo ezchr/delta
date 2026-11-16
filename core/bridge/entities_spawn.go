@@ -51,7 +51,9 @@ type entity struct {
 
 	riders  []int64 // unique ids of the riders, in seat order
 	vehicle int64   // unique id of what it rides (0: none)
-	leash   int64   // unique id of what it is leashed to (0: none)
+	leash   int64   // unique id of what holds its lead (0: none; entities_leash.go)
+	// leashSent: the client may have a lead on it (the last set_entity_link named a holder).
+	leashSent bool
 
 	painting string
 	frameNBT map[string]any // item frames: the block entity
@@ -309,9 +311,10 @@ func (p *Player) showEntity(e *entity) {
 			p.sendPassengers(v)
 		}
 	}
-	if e.leash != 0 {
-		p.sendLeash(e)
-	}
+	// Its lead (a new entity on the client has none), and the leads of the mobs it holds.
+	e.leash, e.leashSent = leashHolder(e.meta), false
+	p.sendLeash(e)
+	p.relinkLeashed(e)
 }
 
 // removeEntity removes an actor from the client. poof: the server removed it (a dead mob turns
@@ -336,6 +339,7 @@ func (p *Player) removeEntity(rid uint64, poof bool) {
 		}
 	}
 	p.ents.Forget(rid)
+	p.relinkLeashed(e) // the mobs it held lose their lead on the client until it is back
 	if _, ok := p.ents.bosses[e.uniq]; ok {
 		// A Bedrock client drops a boss's bar with the boss.
 		delete(p.ents.bosses, e.uniq)
