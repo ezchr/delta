@@ -74,6 +74,10 @@ type movement struct {
 	// sprint attribute (sprintJumpVerdict); sjYaw the look then.
 	sjTick uint64
 	sjYaw  float32
+	// sleepAt is the server's position of the player while asleep (eyes, Bedrock's: sleep.go);
+	// waking: out of bed, the server's next position for the player is where it stands up.
+	sleepAt mgl64.Vec3
+	waking  bool
 	// barrierTick is the last tick sent before the last absolute teleport, to barrierPos.
 	barrierTick uint64
 	barrierPos  mgl64.Vec3
@@ -178,6 +182,8 @@ func init() {
 	OnJava(v777.ServerboundPlayPlayerCommand, func(p *Player, r *wireReader) error {
 		r.VarInt() // entity id
 		switch r.VarInt() {
+		case 0: // STOP_SLEEPING: the bed screen's leave button
+			p.leaveBed()
 		case 1:
 			p.mv.sprinting = true
 		case 2:
@@ -240,6 +246,11 @@ func init() {
 			p.sendPosition(mgl64.Vec3{}, pk.Yaw, pk.Pitch, relX|relY|relZ|relDX|relDY|relDZ)
 			return
 		}
+		if p.self.sleeping && vec64(pk.Position).Sub(p.mv.sleepAt).Len() < 1 {
+			// Put into the bed: the Java client lies in it by itself (sleep.go).
+			p.mv.sleepAt, p.mv.teleported = vec64(pk.Position), true
+			return
+		}
 		p.self.yaw, p.self.pitch = pk.Yaw, pk.Pitch
 		p.teleportTo(pos, pk.Yaw, pk.Pitch)
 	})
@@ -300,7 +311,7 @@ func mfloor(v float64) float64 { return math.Floor(v) }
 // the server gets standing-still inputs at the target.
 func (p *Player) teleportTo(pos mgl64.Vec3, yaw, pitch float32) {
 	m := &p.mv
-	m.teleported = true
+	m.teleported, m.waking = true, false
 	if p.world != nil && !p.shown(pos) {
 		m.held = &heldTeleport{pos: pos, yaw: yaw, pitch: pitch, since: time.Now()}
 		m.barrierTick, m.barrierPos = m.tick, pos
@@ -361,6 +372,9 @@ func (p *Player) correction(pk *packet.CorrectPlayerMovePrediction) {
 		for _, f := range vehicleCorrectionHooks {
 			f(p, pk)
 		}
+		return
+	}
+	if p.sleepCorrection(vec64(pk.Position), vec64(pk.Delta)) {
 		return
 	}
 	srv := vec64(pk.Position).Sub(mgl64.Vec3{0, eyeHeight, 0})
@@ -436,11 +450,21 @@ func (p *Player) sendInput() {
 		m.keys, m.sprinting, m.onGround, m.hCollision = 0, false, true, false
 		defer func() { m.keys, m.sprinting = keys, sprinting }()
 	}
+	if p.self.sleeping {
+		// Asleep: no input, at the server's position (sleep.go).
+		keys, sprinting := m.keys, m.sprinting
+		m.keys, m.sprinting, m.onGround, m.hCollision = 0, false, true, false
+		defer func() { m.keys, m.sprinting = keys, sprinting }()
+	}
 	r := p.rem
 	m.lastInput = time.Now()
 	flags := protocol.NewInputFlags(packet.InputFlagCount)
 	prevGround := m.wasOnGround // the server's player is on the ground as this input starts
 	pos := m.pos
+	if p.self.sleeping {
+		pos = m.sleepAt.Sub(mgl64.Vec3{0, eyeHeight, 0})
+		m.lastPos = pos
+	}
 	if m.sjTick != 0 && m.tick >= m.sjTick+sprintJumpWait {
 		m.sjTick = 0 // no word from the server: leave it to its correction
 	}

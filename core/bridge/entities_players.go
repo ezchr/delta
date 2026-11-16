@@ -285,8 +285,11 @@ func (p *Player) addPlayer(pk *packet.AddPlayer) {
 		java: t.java, uuid: id, meta: meta}
 	e.flags, _ = meta[protocol.EntityDataKeyFlags].(int64)
 	e.flags2, _ = meta[protocol.EntityDataKeyFlagsTwo].(int64)
-	// AddPlayer has the feet position (MovePlayer the eyes).
+	// AddPlayer has the feet position (MovePlayer the eyes; a sleeper's are 0.2 above its feet).
 	e.pos = vec64(pk.Position)
+	if e.flag(protocol.EntityDataFlagSleeping) {
+		e.pos[1] -= sleeperYOff - 0.2
+	}
 	e.vel = vec64(pk.Velocity)
 	e.yaw, e.pitch, e.head = pk.Yaw, pk.Pitch, pk.HeadYaw
 	if pk.HeldItem.Stack.NetworkID != 0 {

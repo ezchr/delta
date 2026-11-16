@@ -22,7 +22,7 @@ func init() {
 		if !ok {
 			return
 		}
-		pos := vec64(pk.Position).Sub(mgl64.Vec3{0, e.t.yOff, 0})
+		pos := vec64(pk.Position).Sub(mgl64.Vec3{0, e.yOffset(), 0})
 		yaw, pitch, head := pk.Rotation[1], pk.Rotation[0], pk.Rotation[2]
 		if e.t.kind&entBoat != 0 {
 			yaw -= 90
@@ -43,7 +43,7 @@ func init() {
 			pos[0] = float64(v)
 		}
 		if v, ok := pk.PositionY.Value(); ok {
-			pos[1] = float64(v) - e.t.yOff
+			pos[1] = float64(v) - e.yOffset()
 		}
 		if v, ok := pk.PositionZ.Value(); ok {
 			pos[2] = float64(v)
@@ -71,7 +71,7 @@ func init() {
 		if !ok {
 			return
 		}
-		pos := vec64(pk.Position).Sub(mgl64.Vec3{0, eyeHeight, 0})
+		pos := vec64(pk.Position).Sub(mgl64.Vec3{0, e.yOffset(), 0})
 		if pk.Mode == packet.MoveModeReset {
 			p.revivePlayer(e) // a respawn
 		} else {

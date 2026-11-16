@@ -81,7 +81,9 @@ func init() {
 		case packet.AnimateActionMagicCriticalHit:
 			p.sendAnimate(e.id, 2)
 		case packet.AnimateActionStopSleep:
-			p.sendAnimate(e.id, 0)
+			if e.t.kind&entPlayer != 0 { // the Java client takes the entity for a player
+				p.sendAnimate(e.id, 0)
+			}
 		}
 	})
 	OnBedrock(packet.IDTakeItemActor, func(p *Player, pk *packet.TakeItemActor) {

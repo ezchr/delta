@@ -81,8 +81,14 @@ func init() {
 		for k, v := range pk.EntityMetadata {
 			e.meta[k] = v
 		}
+		yOff := e.yOffset()
 		e.flags, _ = e.meta[protocol.EntityDataKeyFlags].(int64)
 		e.flags2, _ = e.meta[protocol.EntityDataKeyFlagsTwo].(int64)
+		// A player in or out of bed: its position is the server's minus another offset (sleep.go).
+		resync := e.yOffset() != yOff
+		if resync {
+			e.pos[1] += yOff - e.yOffset()
+		}
 		propsChanged := p.applyProps(e, pk.EntityProperties)
 		if _, ok := pk.EntityMetadata[protocol.EntityDataKeyLeashHolder]; ok {
 			p.updateLeash(e) // also before the spawn: showEntity sends what it has then
@@ -91,6 +97,9 @@ func init() {
 			return
 		}
 		p.sendEntityData(e, false)
+		if resync {
+			p.moveEntity(e, e.pos, e.yaw, e.pitch, e.head, e.onGround, true)
+		}
 		p.sendScale(e)
 		if propsChanged && heldByProperty(e) {
 			p.sendEquipment(e)

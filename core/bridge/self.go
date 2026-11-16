@@ -40,6 +40,10 @@ type selfState struct {
 	held bool
 	// usingItem: the server's using-item flag of the player, as the Java client was told (food.go).
 	usingItem bool
+	// sleeping: the server has the player in a bed (sleep.go); bed is the server's bed position
+	// of the player (actor data 28: the bed slept in, also the spawn bed).
+	sleeping bool
+	bed      protocol.BlockPos
 	// opLevel is the Java op level the client is given (entity_event 24+n): 2 for everyone, since
 	// a Java client below 2 refuses target selectors (@s, @a...) in what it types and Bedrock
 	// allows them in any command a player may run; 4 for operators. 0: not decided yet (2).
@@ -433,8 +437,15 @@ func (p *Player) setGameType(t int32) {
 	p.sendMovementAttributes()
 }
 
-// selfMetadata applies the player's own entity data: immobile (a server freezing the player).
+// selfMetadata applies the player's own entity data: immobile (a server freezing the player),
+// sleeping (sleep.go).
 func (p *Player) selfMetadata(meta protocol.EntityMetadata) {
+	if bed, ok := meta[protocol.EntityDataKeyBedPosition].(protocol.BlockPos); ok {
+		p.self.bed = bed
+	}
+	if flags2, ok := meta[protocol.EntityDataKeyFlagsTwo].(int64); ok {
+		p.setSleeping(flags2&(1<<(protocol.EntityDataFlagSleeping-64)) != 0)
+	}
 	flags, ok := meta[protocol.EntityDataKeyFlags].(int64)
 	if !ok {
 		return
