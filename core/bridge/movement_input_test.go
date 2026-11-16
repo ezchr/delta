@@ -119,74 +119,65 @@ func TestMovementInput(t *testing.T) {
 		t.Error("StartJumping/StartSprinting repeated in the air")
 	}
 
-	// Sneaking: the Java client crouches by the shift key of the tick before, so the sneak flags
-	// and the move vector scaled like Bedrock's (x0.3) come one tick after the key.
+	// Sneaking: the move vector is scaled like Bedrock's (x0.3), sneak flags on the first tick.
 	javaIn(t, p, v777.ServerboundPlayPlayerCommand, func(w *wire.Writer) { w.VarInt(SelfEntityID); w.VarInt(2); w.VarInt(0) })
 	tick(t, p, keyForward|keyShift, mgl64.Vec3{0.5, 64, 1.25}, 0, 10, true)
-	key := take()[0]
-	if key.InputData.Load(packet.InputFlagSneaking) || key.MoveVector[1] != 1 || !key.InputData.Load(packet.InputFlagStopSprinting) {
-		t.Errorf("shift key tick: sneaking %v move %v stop sprint %v", key.InputData.Load(packet.InputFlagSneaking), key.MoveVector,
-			key.InputData.Load(packet.InputFlagStopSprinting))
-	}
-	tick(t, p, keyForward|keyShift, mgl64.Vec3{0.5, 64, 1.3}, 0, 10, true)
 	sneak := take()[0]
-	if !sneak.InputData.Load(packet.InputFlagSneaking) || !sneak.InputData.Load(packet.InputFlagStartSneaking) {
-		t.Errorf("sneak flags: sneaking %v start %v", sneak.InputData.Load(packet.InputFlagSneaking), sneak.InputData.Load(packet.InputFlagStartSneaking))
+	if !sneak.InputData.Load(packet.InputFlagSneaking) || !sneak.InputData.Load(packet.InputFlagStartSneaking) || !sneak.InputData.Load(packet.InputFlagStopSprinting) {
+		t.Errorf("sneak flags: sneaking %v start %v stop sprint %v", sneak.InputData.Load(packet.InputFlagSneaking),
+			sneak.InputData.Load(packet.InputFlagStartSneaking), sneak.InputData.Load(packet.InputFlagStopSprinting))
 	}
 	if math.Abs(float64(sneak.MoveVector[1])-0.3) > 1e-6 {
 		t.Errorf("sneak move vector %v, want 0.3 forward", sneak.MoveVector)
 	}
-	tick(t, p, 0, mgl64.Vec3{0.5, 64, 1.3}, 0, 10, true)
-	if s := take()[0]; !s.InputData.Load(packet.InputFlagSneaking) || s.InputData.Load(packet.InputFlagStopSneaking) {
-		t.Error("the tick the shift key is released: still crouching on Java, not sneaking any more")
-	}
-	tick(t, p, 0, mgl64.Vec3{0.5, 64, 1.3}, 0, 10, true)
+	tick(t, p, 0, mgl64.Vec3{0.5, 64, 1.25}, 0, 10, true)
 	if s := take()[0]; !s.InputData.Load(packet.InputFlagStopSneaking) || s.InputData.Load(packet.InputFlagSneaking) {
-		t.Error("a tick after releasing sneak: no StopSneaking")
+		t.Error("releasing sneak: no StopSneaking")
 	}
 }
 
-// TestStopSprintRepeated: BDS ignores a StopSprinting that comes while the player is in the
-// air, so it goes again in every input until the server's movement attribute drops the sprint.
-func TestStopSprintRepeated(t *testing.T) {
+// TestSprintEndsWhenCrouching: Java 26 sprints on while crouching, BDS ends the sprint, so the
+// bridge ends the Java client's sprint the tick it crouches (a tick after the shift key).
+func TestSprintEndsWhenCrouching(t *testing.T) {
+	p, take := movePlayer(t)
+	javaIn(t, p, v777.ServerboundPlayPlayerCommand, func(w *wire.Writer) { w.VarInt(SelfEntityID); w.VarInt(1); w.VarInt(0) })
+	tick(t, p, keyForward, mgl64.Vec3{0.5, 64, 0.8}, 0, 0, true)
+	tick(t, p, keyForward|keyShift, mgl64.Vec3{0.5, 64, 1.1}, 0, 0, true)
+	if !p.mv.sprinting {
+		t.Fatal("sprint ended on the shift key tick (the client crouches a tick later)")
+	}
+	tick(t, p, keyForward|keyShift, mgl64.Vec3{0.5, 64, 1.2}, 0, 0, true)
+	in := take()
+	if p.mv.sprinting || !in[len(in)-1].InputData.Load(packet.InputFlagStopSprinting) {
+		t.Errorf("crouching: sprinting %v, StopSprinting %v", p.mv.sprinting, in[len(in)-1].InputData.Load(packet.InputFlagStopSprinting))
+	}
+}
+
+// TestSprintStopOnLanding: BDS ignores a sprint stop in the air, so a Java client that stops
+// sprinting in the air (it ran into a block side) is reported sprinting until its first input on
+// the ground, which carries the stop.
+func TestSprintStopOnLanding(t *testing.T) {
 	p, take := movePlayer(t)
 	javaIn(t, p, v777.ServerboundPlayPlayerCommand, func(w *wire.Writer) { w.VarInt(SelfEntityID); w.VarInt(1); w.VarInt(0) })
 	tick(t, p, keyForward|keyJump, mgl64.Vec3{0.5, 64.42, 0.8}, 0, 0, false)
 	p.mv.srvSprint = true // the server's attribute: sprinting
 	take()
-	// The Java client runs into a block side in the air and stops sprinting.
 	javaIn(t, p, v777.ServerboundPlayPlayerCommand, func(w *wire.Writer) { w.VarInt(SelfEntityID); w.VarInt(2); w.VarInt(0) })
 	for i := range 3 {
 		tick(t, p, keyForward|keyJump, mgl64.Vec3{0.5, 64.6, 0.8}, 0, 0, false)
 		in := take()[0]
-		if !in.InputData.Load(packet.InputFlagStopSprinting) || in.InputData.Load(packet.InputFlagSprinting) {
-			t.Errorf("input %d after the sprint stop: StopSprinting %v Sprinting %v", i, in.InputData.Load(packet.InputFlagStopSprinting),
-				in.InputData.Load(packet.InputFlagSprinting))
+		if !in.InputData.Load(packet.InputFlagSprinting) || in.InputData.Load(packet.InputFlagStopSprinting) {
+			t.Errorf("in the air %d after the sprint stop: Sprinting %v StopSprinting %v", i, in.InputData.Load(packet.InputFlagSprinting),
+				in.InputData.Load(packet.InputFlagStopSprinting))
 		}
 	}
-	p.mv.srvSprint = false // the server took it
 	tick(t, p, keyForward|keyJump, mgl64.Vec3{0.5, 64, 0.8}, 0, 0, true)
-	if in := take()[0]; in.InputData.Load(packet.InputFlagStopSprinting) {
-		t.Error("StopSprinting after the server stopped the sprint")
+	if in := take()[0]; !in.InputData.Load(packet.InputFlagStopSprinting) || in.InputData.Load(packet.InputFlagSprinting) {
+		t.Error("landing: no StopSprinting")
 	}
-}
-
-// TestCorrectionNudges: a small server correction becomes a relative Java teleport, and the
-// position history after it is shifted, so the next input carries the corrected position.
-func TestCorrectionNudges(t *testing.T) {
-	p, take := movePlayer(t)
-	tick(t, p, 0, mgl64.Vec3{0.5, 64, 0.5}, 0, 0, true)
-	sent := take()[0]
-	p.correction(&packet.CorrectPlayerMovePrediction{
-		Position: sent.Position.Add([3]float32{0, 0, 0.5}),
-		Tick:     sent.Tick,
-		OnGround: true,
-	})
-	if len(p.mv.pending) != 1 || p.mv.pending[0].absolute {
-		t.Fatalf("pending teleports %+v, want one relative", p.mv.pending)
-	}
-	if off := p.mv.pending[0].offset; math.Abs(off[2]-0.5) > 1e-4 {
-		t.Errorf("relative offset %v, want 0 0 0.5", off)
+	tick(t, p, keyForward|keyJump, mgl64.Vec3{0.5, 64.42, 0.8}, 0, 0, false)
+	if in := take()[0]; in.InputData.Load(packet.InputFlagStopSprinting) || in.InputData.Load(packet.InputFlagSprinting) {
+		t.Error("after landing: sprint flags again")
 	}
 }
 

@@ -59,7 +59,7 @@ type movement struct {
 	swungAtAir                                         bool
 
 	// shiftKey is the shift key of the last input sent: the Java client crouches by the key of
-	// the tick before (sendInput).
+	// the tick before, the sprint ends then (sendInput).
 	shiftKey bool
 	// srvSprint: the server's last movement attribute has the sprint modifier (self.go).
 	srvSprint bool
@@ -481,14 +481,11 @@ func (p *Player) sendInput() {
 	if mv[0] != 0 && mv[1] != 0 {
 		mv = mv.Mul(float32(1 / math.Sqrt2))
 	}
-	// The Java client crouches (and slows its move input) by the shift key of the tick before:
-	// LocalPlayer.aiStep sets crouching before it reads the tick's keys, and the player_input with
-	// the new key goes out in the same tick. BDS sneaks in the tick Sneaking comes, so the sneak
-	// flags and the x0.3 follow the key one tick late (one tick early at a sneak start and stop
-	// the server moved 0.1-0.25 blocks off, then corrected).
-	sneaking := m.shiftKey && !p.self.flying
-	m.shiftKey = m.keys&keyShift != 0
-	if sneaking && m.sprinting {
+	// The Java client crouches (and slows its move input) by the shift key of the tick before
+	// (LocalPlayer.aiStep sets crouching before it reads the tick's keys); BDS too only sneaks
+	// from the input after the one with Sneaking, so the flags go with the key.
+	sneaking := m.keys&keyShift != 0 && !p.self.flying
+	if m.shiftKey && m.sprinting && !p.self.flying {
 		p.stopJavaSprint() // BDS ends a sprint when the player sneaks; Java 26 sprints on
 	}
 	if sneaking {
@@ -540,6 +537,7 @@ func (p *Player) sendInput() {
 		flags.Set(packet.InputFlagSneakReleasedRaw)
 	}
 	m.wasSneaking = sneaking
+	m.shiftKey = m.keys&keyShift != 0
 	// Flying down: BDS adds -0.15 per tick for WantDownSlow, like Java's sneak key (flying speed
 	// x3), but -0.22 for WantDown (VerticalFlySpeedControlSystem), and SneakDown while flying
 	// makes it simulate something else again. Up (WantUp, above) is +0.15 on both.
@@ -547,18 +545,22 @@ func (p *Player) sendInput() {
 		flags.Set(packet.InputFlagWantDownSlow)
 	}
 	sprinting := m.sprinting
+	if !sprinting && m.wasSprinting && m.srvSprint && !m.onGround {
+		// The Java client stops sprinting when it runs into the side of a block (not when it
+		// only grazes it), often in the air. BDS ignores a sprint stop that comes while the
+		// player is in the air and sprints on (sprint speed, the next jump's boost: 0.3-0.9
+		// blocks off within a jump, the stutter at block corners), and a StopSprinting sent
+		// again later does not count either. So the server is told the sprint goes on until
+		// the first input on the ground, where the stop counts.
+		sprinting = true
+	}
 	if sprinting {
 		flags.Set(packet.InputFlagSprinting)
 		flags.Set(packet.InputFlagSprintDown)
 	}
 	if sprinting && !m.wasSprinting {
 		flags.Set(packet.InputFlagStartSprinting)
-	} else if !sprinting && (m.wasSprinting || m.srvSprint) {
-		// The Java client stops sprinting when it runs into the side of a block (not when it
-		// only grazes it), often in the air. BDS ignores a StopSprinting that comes while the
-		// player is in the air and sprints on, with the sprint's speed and its next jump's boost:
-		// 0.3-0.9 blocks off within a jump. So StopSprinting goes again in every input until the
-		// server's movement attribute no longer has the sprint modifier; BDS takes it on landing.
+	} else if !sprinting && m.wasSprinting {
 		flags.Set(packet.InputFlagStopSprinting)
 	}
 	m.wasSprinting = sprinting
