@@ -14,7 +14,7 @@ import (
 // with expressions such as (('%.16s' * #form_text) - ('%.0s' * #form_text)), some of them text
 // for labels and some the names of textures. Java has no such layouts, and shown as it is the
 // form is a block of codes. A FormScreen is what a layout says about one screen, enough to show
-// the form as plain text: which parts of the body are labels and where they are, and which
+// the form as plain text: its labels with the expressions that fill and show them, and which
 // label is drawn on which button.
 
 // FormScreen is one screen a pack draws for forms whose title holds Marker.
@@ -28,14 +28,15 @@ type FormScreen struct {
 	HiddenTexture string
 }
 
-// FormLabel is a label of a screen: Text if it is fixed, else the bytes From..To of the form's
-// body (To < 0: to the end).
+// FormLabel is a label of a screen: Text if it is fixed, else the value of Expr (a binding
+// expression over the form's title and body). It shows when every expression in Visible is
+// true; one that cannot be evaluated counts as true.
 type FormLabel struct {
 	Name     string
 	X, Y     float64
 	Text     string
-	From, To int
-	Dynamic  bool
+	Expr     string
+	Visible  []string
 	onButton bool
 	depth    int // how deep in the screen's controls it is (1: the screen's own)
 }
@@ -44,6 +45,7 @@ type FormLabel struct {
 type FormButton struct {
 	Index      int
 	X, Y, W, H float64
+	Visible    []string
 	label      int // index in Labels of the label drawn on it, -1 if none
 	header     int // index in Labels of the heading above it, -1 if none
 	ordinal    int // its number among the buttons under that heading, from 1
@@ -51,9 +53,6 @@ type FormButton struct {
 
 var (
 	formTitleMarker = regexp.MustCompile(`#title_text\s*-\s*'([^']{2,64})'`)
-	formSub         = regexp.MustCompile(`^\(\('%\.(\d+)s' \* #form_text\) - \('%\.(\d+)s' \* #form_text\)\)$`)
-	formTail        = regexp.MustCompile(`^\(#form_text - \('%\.(\d+)s' \* #form_text\)\)$`)
-	formHead        = regexp.MustCompile(`^\('%\.(\d+)s' \* #form_text\)$`)
 	formHidden      = regexp.MustCompile(`#form_button_texture\s*-\s*'([^']{1,64})'`)
 )
 
@@ -86,7 +85,7 @@ func FormScreensOf(packs []*Source) []FormScreen {
 			def := ui.defs[name]
 			marker := ""
 			for _, bd := range bindingsOf(def) {
-				if m := formTitleMarker.FindStringSubmatch(bd.source); m != nil {
+				if m := formTitleMarker.FindStringSubmatch(bd.source); m != nil && bd.target == "#visible" {
 					marker = m[1]
 				}
 			}
@@ -95,7 +94,7 @@ func FormScreensOf(packs []*Source) []FormScreen {
 			}
 			seen[marker] = true
 			s := FormScreen{Marker: marker}
-			ui.walk(&s, name, def, 0, 0, 0)
+			ui.walk(&s, name, def, 0, 0, 0, nil)
 			s.finish()
 			out = append(out, s)
 		}
@@ -136,8 +135,9 @@ func pair(v any) (float64, float64, bool) {
 	return x, y, ok1 && ok2
 }
 
-// walk collects the labels and buttons of node, at ox, oy on the screen.
-func (ui *formUI) walk(s *FormScreen, name string, node map[string]any, ox, oy float64, depth int) {
+// walk collects the labels and buttons of node, at ox, oy on the screen. vis are the conditions
+// under which the controls above it show.
+func (ui *formUI) walk(s *FormScreen, name string, node map[string]any, ox, oy float64, depth int, vis []string) {
 	if depth > 16 || len(s.Labels) > 4000 {
 		return
 	}
@@ -146,39 +146,32 @@ func (ui *formUI) walk(s *FormScreen, name string, node map[string]any, ox, oy f
 	}
 	typ, _ := node["type"].(string)
 	binds := bindingsOf(node)
+	for _, bd := range binds {
+		if bd.target == "#visible" && bd.source != "" {
+			vis = append(vis[:len(vis):len(vis)], bd.source)
+		}
+	}
 	switch typ {
 	case "label":
 		txt, _ := node["text"].(string)
-		l := FormLabel{Name: name, X: ox, Y: oy, depth: depth}
+		l := FormLabel{Name: name, X: ox, Y: oy, depth: depth, Visible: vis}
 		switch {
 		case txt != "" && !strings.HasPrefix(txt, "#") && !strings.HasPrefix(txt, "$"):
 			l.Text = txt
 			s.Labels = append(s.Labels, l)
 		case strings.HasPrefix(txt, "#"):
 			for _, bd := range binds {
-				if bd.target != txt {
-					continue
+				if bd.target == txt && strings.Contains(bd.source, "#form_text") {
+					l.Expr = bd.source
+					s.Labels = append(s.Labels, l)
+					break
 				}
-				if m := formSub.FindStringSubmatch(bd.source); m != nil {
-					l.To, _ = strconv.Atoi(m[1])
-					l.From, _ = strconv.Atoi(m[2])
-				} else if m := formTail.FindStringSubmatch(bd.source); m != nil {
-					l.From, _ = strconv.Atoi(m[1])
-					l.To = -1
-				} else if m := formHead.FindStringSubmatch(bd.source); m != nil {
-					l.To, _ = strconv.Atoi(m[1])
-				} else {
-					continue
-				}
-				l.Dynamic = true
-				s.Labels = append(s.Labels, l)
-				break
 			}
 		}
 	case "button":
 		if idx, ok := node["collection_index"].(float64); ok {
 			w, h, _ := pair(node["size"])
-			s.Buttons = append(s.Buttons, FormButton{Index: int(idx), X: ox, Y: oy, W: w, H: h, label: -1, header: -1})
+			s.Buttons = append(s.Buttons, FormButton{Index: int(idx), X: ox, Y: oy, W: w, H: h, Visible: vis, label: -1, header: -1})
 		}
 		for _, bd := range binds {
 			if m := formHidden.FindStringSubmatch(bd.source); m != nil && s.HiddenTexture == "" {
@@ -213,7 +206,7 @@ func (ui *formUI) walk(s *FormScreen, name string, node map[string]any, ox, oy f
 					child = merged
 				}
 			}
-			ui.walk(s, cname, child, ox, oy, depth+1)
+			ui.walk(s, cname, child, ox, oy, depth+1, vis)
 		}
 	}
 }
@@ -230,7 +223,7 @@ func (s *FormScreen) finish() {
 	sort.SliceStable(s.Buttons, func(i, j int) bool { return s.Buttons[i].Index < s.Buttons[j].Index })
 	for i := range s.Labels {
 		// The screen's own heading, not that of a panel inside it.
-		if l := &s.Labels[i]; !l.Dynamic && l.depth <= 1 && s.Title == "" && strings.EqualFold(l.Name, "title") {
+		if l := &s.Labels[i]; l.Expr == "" && l.depth <= 1 && s.Title == "" && strings.EqualFold(l.Name, "title") {
 			s.Title = l.Text
 			l.onButton = true // not part of the body
 		}
@@ -274,19 +267,37 @@ func (s *FormScreen) finish() {
 	}
 }
 
-// cut is the label's text in the form body.
-func (l *FormLabel) cut(body string) string {
-	if !l.Dynamic {
-		return l.Text
+// FormData is a form as its screen's expressions see it.
+type FormData map[string]string
+
+// NewFormData are the variables of a form with this title and body.
+func NewFormData(title, body string) FormData {
+	return FormData{"#title_text": title, "#form_text": body}
+}
+
+func shown(vis []string, d FormData) bool {
+	for _, e := range vis {
+		v, err := evalUI(e, d)
+		if err == nil && !v.truth() {
+			return false
+		}
 	}
-	from, to := l.From, l.To
-	if to < 0 || to > len(body) {
-		to = len(body)
-	}
-	if from > to {
+	return true
+}
+
+// text is the label's text in the form, "" when it does not show.
+func (l *FormLabel) text(d FormData) string {
+	if !shown(l.Visible, d) {
 		return ""
 	}
-	return cleanFormText(body[from:to])
+	if l.Expr == "" {
+		return l.Text
+	}
+	v, err := evalUI(l.Expr, d)
+	if err != nil {
+		return ""
+	}
+	return cleanFormText(v.str())
 }
 
 // cleanFormText trims a field: its padding, a cut-off multi-byte character, and formatting codes
@@ -301,7 +312,6 @@ func cleanFormText(t string) string {
 }
 
 func visibleText(t string) bool {
-	plain := false
 	skip := false
 	for _, r := range t {
 		if skip {
@@ -313,15 +323,15 @@ func visibleText(t string) bool {
 			continue
 		}
 		if !unicode.IsSpace(r) {
-			plain = true
+			return true
 		}
 	}
-	return plain
+	return false
 }
 
 // Body is the form's text as the screen shows it: the labels that are not written on buttons,
 // row by row.
-func (s *FormScreen) Body(body string) []string {
+func (s *FormScreen) Body(d FormData) []string {
 	var lines []string
 	var row []string
 	rowY := 0.0
@@ -336,7 +346,7 @@ func (s *FormScreen) Body(body string) []string {
 		if l.onButton {
 			continue
 		}
-		t := l.cut(body)
+		t := l.text(d)
 		if !visibleText(t) {
 			continue
 		}
@@ -352,20 +362,22 @@ func (s *FormScreen) Body(body string) []string {
 	return lines
 }
 
-// ButtonLabel is what the screen writes on the form's button index, "" if the layout does not
-// say (the button's own text is then the best there is). image is the button's image path.
-func (s *FormScreen) ButtonLabel(index int, body string) string {
+func (s *FormScreen) button(index int) *FormButton {
 	for i := range s.Buttons {
-		b := &s.Buttons[i]
-		if b.Index != index {
-			continue
+		if s.Buttons[i].Index == index {
+			return &s.Buttons[i]
 		}
-		if b.label >= 0 {
-			if t := s.Labels[b.label].cut(body); visibleText(t) {
-				return t
-			}
+	}
+	return nil
+}
+
+// ButtonLabel is what the screen writes on the form's button index, "" if the layout does not
+// say (the button's own text is then the best there is).
+func (s *FormScreen) ButtonLabel(index int, d FormData) string {
+	if b := s.button(index); b != nil && b.label >= 0 {
+		if t := s.Labels[b.label].text(d); visibleText(t) {
+			return t
 		}
-		return ""
 	}
 	return ""
 }
@@ -373,24 +385,25 @@ func (s *FormScreen) ButtonLabel(index int, body string) string {
 // ButtonHeader names a button the screen writes nothing on after the heading above it and its
 // number under that heading ("Kanto 2"), "" if there is none. It is for buttons that would
 // otherwise all read the same.
-func (s *FormScreen) ButtonHeader(index int, body string) string {
-	for i := range s.Buttons {
-		b := &s.Buttons[i]
-		if b.Index == index && b.header >= 0 {
-			if t := s.Labels[b.header].cut(body); visibleText(t) {
-				return t + " " + strconv.Itoa(b.ordinal)
-			}
+func (s *FormScreen) ButtonHeader(index int, d FormData) string {
+	if b := s.button(index); b != nil && b.header >= 0 {
+		if t := s.Labels[b.header].text(d); visibleText(t) {
+			return t + " " + strconv.Itoa(b.ordinal)
 		}
 	}
 	return ""
 }
 
-// Hidden reports whether a button with this image is switched off by the layout.
-func (s *FormScreen) Hidden(image string) bool {
-	if s.HiddenTexture == "" || image == "" {
-		return false
+// Hidden reports whether the form's button index, with this image, is not on the screen: the
+// layout switches it off by its image or by a condition on the form.
+func (s *FormScreen) Hidden(index int, image string, d FormData) bool {
+	if s.HiddenTexture != "" && image != "" && (image == s.HiddenTexture || strings.HasSuffix(image, "/"+s.HiddenTexture)) {
+		return true
 	}
-	return image == s.HiddenTexture || strings.HasSuffix(image, "/"+s.HiddenTexture)
+	if b := s.button(index); b != nil {
+		return !shown(b.Visible, d)
+	}
+	return false
 }
 
 // PlainTitle is a title for the screen when its layout has no heading: the marker without its

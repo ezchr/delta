@@ -23,6 +23,9 @@ const testFormUI = `{
    {"desc": {"type": "label", "text": "#value", "offset": [10, 90], "bindings": [
      {"binding_type": "view", "source_property_name": "(#form_text - ('%.20s' * #form_text))", "target_property_name": "#value"}]}},
    {"go_l": {"type": "label", "text": "Go!", "offset": [15, 123]}},
+   {"tab": {"type": "panel", "offset": [0, 60], "bindings": [
+     {"binding_type": "view", "source_property_name": "((('%.1s' * #form_text) - ('%.0s' * #form_text)) = 'Z')", "target_property_name": "#visible"}],
+     "controls": [{"other": {"type": "label", "text": "Other tab"}}]}},
    {"buttons": {"type": "collection_panel", "collection_name": "form_buttons", "controls": [
      {"b0": {"type": "button", "size": [20, 20], "offset": [100, 50], "collection_index": 0,
        "bindings": [{"binding_type": "view", "source_property_name": "((#form_button_texture - 'none') = #form_button_texture)", "target_property_name": "#focus_enabled"}]}},
@@ -46,21 +49,50 @@ func TestFormScreens(t *testing.T) {
 	if s.PlainTitle() != "Pick One" {
 		t.Errorf("title %q", s.PlainTitle())
 	}
-	got := strings.Join(s.Body(body), "|")
+	got := strings.Join(s.Body(NewFormData("my:pick", body)), "|")
 	if got != "Bulbasaur|Kanto|A seed on its back." {
 		t.Errorf("body %q", got)
 	}
-	if l := s.ButtonLabel(2, body); l != "Go!" {
+	d := NewFormData("my:pick", body)
+	if l := s.ButtonLabel(2, d); l != "Go!" {
 		t.Errorf("button 2 label %q", l)
 	}
-	if l := s.ButtonLabel(0, body); l != "" {
+	if l := s.ButtonLabel(0, d); l != "" {
 		t.Errorf("button 0 label %q", l)
 	}
-	if h0, h1 := s.ButtonHeader(0, body), s.ButtonHeader(1, body); h0 != "Kanto 1" || h1 != "Kanto 2" {
+	if h0, h1 := s.ButtonHeader(0, d), s.ButtonHeader(1, d); h0 != "Kanto 1" || h1 != "Kanto 2" {
 		t.Errorf("headers %q %q", h0, h1)
 	}
-	if !s.Hidden("textures/ui/x/none") || s.Hidden("textures/ui/x/slot") {
+	if !s.Hidden(0, "textures/ui/x/none", d) || s.Hidden(0, "textures/ui/x/slot", d) {
 		t.Errorf("hidden texture %q", s.HiddenTexture)
+	}
+	// The tab that shows only for a body starting with Z.
+	if got := strings.Join(s.Body(NewFormData("my:pick", "Zulbasaur "+body[10:])), "|"); !strings.Contains(got, "Other tab") {
+		t.Errorf("body with the other tab %q", got)
+	}
+}
+
+func TestUIExpr(t *testing.T) {
+	vars := map[string]string{"#form_text": "abcdefgh", "#title_text": "cbm:party|d"}
+	for expr, want := range map[string]string{
+		"(('%.5s' * #form_text) - ('%.2s' * #form_text))":                                       "cde",
+		"(#form_text - ('%.6s' * #form_text))":                                                  "gh",
+		"('x/' + (('%.2s' * #form_text) - ('%.0s' * #form_text)))":                              "x/ab",
+		"((('%.3s' * #form_text) - ('%.2s' * #form_text)) = 'c')":                               "true",
+		"(not ((#title_text - 'cbm:party') = #title_text))":                                     "true",
+		"((not ((#title_text - '|d') = #title_text)) and ((#title_text - '|t') = #title_text))": "true",
+		"(not (not ((#title_text - '|t') = #title_text)))":                                      "true",
+	} {
+		v, err := evalUI(expr, vars)
+		if err != nil || v.str() != want {
+			t.Errorf("%s = %q, %v; want %q", expr, v.str(), err, want)
+		}
+	}
+	if _, err := evalUI("(#form_button_text = '')", vars); err == nil {
+		t.Error("an unknown variable must be an error")
+	}
+	for _, bad := range []string{"", "(", "('a' +", "'abc", "((#form_text))) x"} {
+		_, _ = evalUI(bad, vars) // must not panic
 	}
 }
 
@@ -77,7 +109,7 @@ func TestRealFormScreens(t *testing.T) {
 	for _, s := range FormScreensOf([]*Source{{files: map[string][]byte{"ui/server_form.json": b}}}) {
 		dyn := 0
 		for _, l := range s.Labels {
-			if l.Dynamic {
+			if l.Expr != "" {
 				dyn++
 			}
 		}

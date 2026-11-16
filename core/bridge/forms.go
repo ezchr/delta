@@ -165,7 +165,8 @@ func (p *Player) showForm(pk *packet.ModalFormRequest) {
 			elems = bf.Elements
 		}
 		if screen != nil {
-			body = append(body, screen.Body(content)...)
+			data := javapack.NewFormData(string(bf.Title), content)
+			body = append(body, screen.Body(data)...)
 			same := map[string]int{}
 			for _, e := range elems {
 				same[string(e.Text)]++
@@ -177,12 +178,12 @@ func (p *Player) showForm(pk *packet.ModalFormRequest) {
 				}
 				i := n
 				n++
-				if screen.Hidden(e.Image.Data) {
+				if screen.Hidden(int(i), e.Image.Data, data) {
 					continue
 				}
-				label := screen.ButtonLabel(int(i), content)
+				label := screen.ButtonLabel(int(i), data)
 				if label == "" && same[string(e.Text)] > 1 {
-					label = screen.ButtonHeader(int(i), content)
+					label = screen.ButtonHeader(int(i), data)
 				}
 				if label == "" {
 					label = buttonWords(string(e.Text))
