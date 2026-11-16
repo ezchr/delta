@@ -70,6 +70,9 @@ class JavaBridgePlugin(Plugin):
     name = "javabridge"
     version = "0.2.0"
     description = "Java Edition players on a Bedrock server"
+    # Load after the xuidforward plugin when both are installed: it hooks BDS first, and this one
+    # uses that hook for Java players instead of trying to patch BDS a second time.
+    soft_depend = ["xuidforward"]
     commands = {
         "jbcore": {
             "description": "Send a request to the javabridge core (debugging).",
