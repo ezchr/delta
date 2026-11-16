@@ -532,6 +532,16 @@ func (p *Player) sendInput() {
 	if sneaking && !m.wasSneaking {
 		flags.Set(packet.InputFlagStartSneaking)
 		flags.Set(packet.InputFlagSneakPressedRaw)
+		if m.onGround {
+			// BDS stops a player that starts sneaking on the ground dead (its horizontal speed
+			// goes, then it builds up the sneak speed), while the Java client slides on with
+			// its momentum: a sprinting player was 0.6 blocks ahead some ticks later and
+			// corrected. The Java client's speed goes too.
+			w := p.pk()
+			w.VarInt(SelfEntityID)
+			w.LpVec3(0, 0, 0)
+			p.send(v777.ClientboundPlaySetEntityMotion, w)
+		}
 	} else if !sneaking && m.wasSneaking {
 		flags.Set(packet.InputFlagStopSneaking)
 		flags.Set(packet.InputFlagSneakReleasedRaw)
