@@ -181,8 +181,24 @@ model. Only parts whose pose changed are sent. Worst case 384 part displays and 
 10*24*3.3 = 1760 entity data packets a second (about 40 bytes each); measured with 16 Pokemon
 around the bot (they breathe, so every bone moves all the time): 232 displays, 1140 packets a
 second. One mob near: 24 displays, 150 packets a second. A mob whose bones are still costs
-nothing. Mobs behind walls or underground still count (no line-of-sight test; BetterModel has
-one).
+nothing.
+
+**Only mobs the player can see get a slot (`animSees`, `sightLine`, `clearLine`).** Before a
+mob is ranked, a line from the player's eyes to five points of its box (low, middle and high on
+its axis, and its two sides at half height as the player sees them) is walked block by block
+through the chunks the bridge holds; a block stops it when it is solid and lets no light
+through (`Palette.Solid` and `Filter` 15), so glass, leaves, water, fences, slabs and plants do
+not. One clear line is enough: a mob half behind a hill counts. Chunks the bridge does not have
+count as see-through. Each mob is tested once a second (`animSightTicks`), at most about 400
+block lookups; an animated mob keeps its slot until three tests in a row failed, a static one
+gets it at the first test that sees it. BetterModel's `sight-trace` is one ray from the eyes
+to the entity's location per tick with no hysteresis; ours is cheaper per second and does not
+flicker at an edge. Not covered: the player's view direction (a mob behind the player keeps
+its slot: turning round would otherwise show a static mob for up to a second).
+Tests: `TestAnimSight` (wall, glass, a hole, a tall mob, a mob at the wall's end, one slot);
+live `/root/jbtest/sightlive.sh`: a Charizard behind a stone wall stayed static while a Pikachu
+in the open animated, was animated a second after the wall was removed and static again three
+seconds after it came back.
 
 **What is not evaluated degrades to still.** A channel whose Molang does not compile or uses a
 query the bridge has no answer for is left out (that bone keeps still on that channel); an

@@ -7,9 +7,11 @@ import (
 	"delta/core/internal/anim"
 	"delta/core/internal/molang"
 
+	"github.com/df-mc/dragonfly/server/block/cube"
 	jitem "github.com/ezchr/go-mcjava/item"
 	v777 "github.com/ezchr/go-mcjava/v777"
 	"github.com/ezchr/go-mcjava/wire"
+	"github.com/go-gl/mathgl/mgl64"
 	"github.com/sandertv/gophertunnel/minecraft/protocol"
 )
 
@@ -31,20 +33,28 @@ import (
 //   - a mob further away than animRange blocks, or beyond those counts, is one display with
 //     the model of the whole mob standing idle (the animation has to look right from close,
 //     not from 50 blocks);
+//   - a mob the player cannot see takes no slot: one behind a hill or in a cave under the
+//     player's feet is static too (animSees);
 //   - only the parts whose pose changed are sent, and a still mob costs nothing.
 //
 // The worst case is every part of every animated mob moving: 6*24 displays at 6.7 Hz plus
 // 10*24 at 3.3 Hz = 1760 entity data packets a second (about 40 bytes each), and 384 display
 // entities.
 const (
-	animNear      = 6
 	animNearTicks = 3
-	animFar       = 10
 	animFarTicks  = 6
 	animRange     = 40.0 // blocks: closer mobs may be animated
 	animRangeOut  = 48.0 // an animated mob stays animated up to here
 	animRankTicks = 10   // how often the mobs to animate are chosen again
+	// Line of sight: a mob is tested every animSightTicks ticks; an animated mob stays animated
+	// until it failed animSightMisses tests in a row (a mob at the edge of a hill does not
+	// flicker), a static one is animated at its first test that sees it.
+	animSightTicks  = 20
+	animSightMisses = 3
 )
+
+// animNear and animFar are the animation slots per player (variables for tests).
+var animNear, animFar = 6, 10
 
 // Display entity data indices (26.3) beyond those in entities_custom.go.
 const (
@@ -80,6 +90,11 @@ type modelAnim struct {
 	sentYaw  byte
 	playing  string
 	distance float64 // to the player, at the last ranking
+	// Line of sight: the last test's tick (0: never tested), its result with the hysteresis
+	// applied, and the tests failed in a row.
+	sightAt uint64
+	seen    bool
+	unseen  int
 }
 
 // newModelAnim starts the animation state of a mob whose model has a rig.
@@ -252,6 +267,13 @@ func (p *Player) animRank() {
 			limit = animRangeOut
 		}
 		if a.distance > limit || e.dead {
+			if a.parts != nil {
+				p.animStop(e, me)
+			}
+			p.animStill(e, me)
+			continue
+		}
+		if !p.animSees(e, me) {
 			if a.parts != nil {
 				p.animStop(e, me)
 			}
@@ -510,4 +532,94 @@ func writeIntData(w *wire.Writer, index byte, v int32) {
 
 func init() {
 	OnTick((*Player).animTick)
+}
+
+// animSees reports whether the player can see a mob, well enough to spend an animation slot on
+// it: the line of sight test, run every animSightTicks ticks per mob, with hysteresis.
+func (p *Player) animSees(e *entity, me *modelEntity) bool {
+	a := me.anim
+	now := p.packs.animTicks
+	if a.sightAt != 0 && now-a.sightAt < animSightTicks {
+		return a.seen
+	}
+	a.sightAt = max(now, 1)
+	if p.sightLine(e, me) {
+		a.seen, a.unseen = true, 0
+		return true
+	}
+	a.unseen++
+	if a.parts != nil && a.unseen < animSightMisses {
+		return true
+	}
+	a.seen = false
+	return false
+}
+
+// sightLine reports whether a straight line from the player's eyes reaches the mob's box
+// without crossing an opaque block. Five points of the box are tried (low, middle and high on
+// its axis, and its two sides at half height as the player sees them), so a mob half behind a
+// hill or a wall's corner counts as seen. Blocks of chunks the bridge does not have count as
+// see-through.
+func (p *Player) sightLine(e *entity, me *modelEntity) bool {
+	if p.world == nil {
+		return true
+	}
+	eye := p.mv.pos.Add(mgl64.Vec3{0, eyeHeight, 0})
+	scale := float64(me.scale * me.script)
+	if scale <= 0 {
+		scale = 1
+	}
+	w, h := float64(me.w)*scale, float64(me.h)*scale
+	// The side direction: horizontal, across the line from the player.
+	dx, dz := e.pos[0]-eye[0], e.pos[2]-eye[2]
+	side := mgl64.Vec3{}
+	if l := math.Hypot(dx, dz); l > 1e-6 {
+		side = mgl64.Vec3{-dz / l * w / 2, 0, dx / l * w / 2}
+	}
+	mid := e.pos.Add(mgl64.Vec3{0, h * 0.5, 0})
+	for _, pt := range [5]mgl64.Vec3{mid, e.pos.Add(mgl64.Vec3{0, h * 0.95, 0}), e.pos.Add(mgl64.Vec3{0, h * 0.1, 0}), mid.Add(side), mid.Sub(side)} {
+		if p.clearLine(eye, pt) {
+			return true
+		}
+	}
+	return false
+}
+
+// clearLine walks the blocks from one point to another (every block the segment passes
+// through) and reports whether none of them blocks the view. A block blocks it when it is
+// solid and lets no light through: glass, leaves, water, fences, slabs and plants do not.
+func (p *Player) clearLine(from, to mgl64.Vec3) bool {
+	w, pal := p.world, p.rem.pal
+	d := to.Sub(from)
+	pos, end := blockPosOf(from), blockPosOf(to)
+	var step [3]int
+	var tMax, tDelta [3]float64
+	for i := 0; i < 3; i++ {
+		switch {
+		case d[i] > 0:
+			step[i], tMax[i], tDelta[i] = 1, (math.Floor(from[i])+1-from[i])/d[i], 1/d[i]
+		case d[i] < 0:
+			step[i], tMax[i], tDelta[i] = -1, (from[i]-math.Floor(from[i]))/-d[i], -1/d[i]
+		default:
+			tMax[i], tDelta[i] = math.Inf(1), math.Inf(1)
+		}
+	}
+	for n := 0; n < 256 && pos != end; n++ {
+		i := 0
+		if tMax[1] < tMax[i] {
+			i = 1
+		}
+		if tMax[2] < tMax[i] {
+			i = 2
+		}
+		if tMax[i] > 1 {
+			break
+		}
+		pos[i] += step[i]
+		tMax[i] += tDelta[i]
+		if b, ok := w.Block(cube.Pos(pos)); ok && pal.Solid(b) && pal.Filter(b) >= 15 {
+			return false
+		}
+	}
+	return true
 }

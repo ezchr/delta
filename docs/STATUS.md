@@ -88,8 +88,8 @@ Custom (add-on) mobs are drawn part by part on item displays and play the pack's
 | A real Java client | nobody looked yet | open |
 
 Not done: animation sound and particle effects, bones that only move in animations the sampled
-situations never play (attacks; they are frozen on their parent), a line-of-sight test, a
-smaller pack (one item definition per entity).
+situations never play (attacks; they are frozen on their parent), a smaller pack (one item
+definition per entity).
 
 ## What is stubbed / not done
 

@@ -276,7 +276,7 @@ func TestAnimatedMob(t *testing.T) {
 				}
 			case m.anim.parts == nil:
 				static++
-				if rid >= 300 && rid < 300+animNear+animFar-1 {
+				if rid >= 300 && rid < uint64(300+animNear+animFar-1) {
 					t.Fatalf("%d: near walker %d is static", v.Protocol, rid)
 				}
 			case m.anim.period == animNearTicks:
