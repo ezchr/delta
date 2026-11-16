@@ -473,7 +473,7 @@ mob of that type is first shown, for its parts' bones only.
 ## Custom mobs: hurt flash, hit sound, name on aim
 
 What a Java client does by itself for a living mob, and cannot for one drawn with item displays
-(`bridge/entities_modelfx.go`; `TestModelFx`). None of the three was seen in a real client yet.
+(`bridge/entities_modelfx.go`; `TestModelFx`, `TestModelBoxScale`).
 
 - **Red flash.** Every entity model face has `tintindex: 0`, and the item definitions (the whole
   mob's, and each `range_dispatch` entry of the parts) have `tints: [{type:
@@ -491,9 +491,110 @@ What a Java client does by itself for a living mob, and cannot for one drawn wit
   living entities. Every second tick the bridge casts the player's view ray against the custom
   mobs' boxes (8 blocks, `aimNameRange`: chosen, Bedrock's own distance was not measured) and
   shows the first line of the name of the one it hits on a text display that rides the mob's
-  hitbox; it is removed when the player looks away. Names the server always shows are left as
-  they were (entity data of the mob's display, which a display may not draw at all: not
-  checked).
+  hitbox; it is removed when the player looks away.
+- **Names the server always shows** (the actor flag AlwaysShowName, or the actor data
+  AlwaysShowNameTag) are on the same kind of display all the time, looked at or not. The mob's
+  own display has the name in its entity data too, and a client draws none for a display
+  entity.
+- **The hitbox is the collision box times the scale.** BDS sends the box of the entity file
+  unscaled (Decidueye: width 0.9, height 3) and the scale beside it (0.65), and sizes the box
+  by the scale itself: `execute at <mob> positioned ~-0.5 ~H ~-0.5 run testfor
+  @e[type=...,dx=0,dy=0,dz=0]` finds the Decidueye at H = 1.2 and not at 2.3, so its box ends
+  at 1.95. The interaction entity was sent the unscaled 0.9 x 3: too big to click past, and the
+  name, which sits on top of the hitbox (+0.3), was a block above the head. Now
+  `modelEntity.box()` is used for the hitbox, the aim ray and the name; a change of the scale
+  resizes the hitbox. The render scale of the client entity file (`scripts.scale`) is not part
+  of the box.
+- **The name after a knockback** (seen in a real client: the name of a Decidueye knocked 15
+  blocks away "stayed high up near the old spot"). On the wire the name display is a passenger
+  of the hitbox, which is a passenger of the mob's display, so a client moves it with the mob;
+  when the mob is moved 15 blocks the aim is lost and the display is removed within two ticks,
+  and it is added again at the mob when the player looks at it there (`/root/jbtest/namelive.sh`,
+  the bot's `RIDE` lines: `RIDE 66 text_display on [40 interaction, 39 item_display]: at 58.50
+  131.95 40.50 (1.95 above the mob's feet)`). The too tall hitbox explains "high up". A name
+  that stays behind was not reproduced with the bot, which does not draw anything: whether a
+  real client still shows that after the hitbox fix is open.
+- **The red flash was not seen in a real 26.2 client** (two hits on a Charizard on flat, with
+  the wheel that has it). What is proven: the pack the client loaded has the tint on every
+  entity model (`/root/jbtest/tintcheck.py <zip>`: 30876 models with a `custom_model_data`
+  tint source, 484576 faces with `tintindex` 0, none without; the pack from before the change
+  has none); the server sends ActorEvent 2 for the hit; the bridge then sends each of the mob's
+  displays its item with `custom_model_data` colours `[ff5a5a]` and the part's number in the
+  floats, and 0.5 s later without (the bot prints a display's item with its tint: `23=1xpaper{model
+  delta:entity/cobblemon/p0724_decidueye/parts floats [0] colors [ff5a5a]}`, 106 of them for a
+  Decidueye). The colour is plain RGB, as in a pack's own `default`; as far as the vanilla client is
+  known (not looked up here) the tint source makes it opaque itself, so an alpha byte should be
+  neither needed nor harmful. The entity data index and serializer
+  are the ones of the item the display is created with, which the client shows. The item
+  package writes custom model data the same for 26.2 and 26.3. What is not proven is the picture: nothing here
+  renders a Java frame. To look at it in a client, `[core.options] hurt_flash_ticks = "100"`
+  keeps a hit mob red for 5 s. If it stays uncoloured then, the client does not apply an item
+  tint to this model, and the next thing to try is a second set of red textures (no tint).
+
+## Form screens of a pack (ui/server_form.json)
+
+- A pack can draw a form as a screen of its own: the title names the screen (`cbm:starter`),
+  the body is fixed-width fields, the buttons are placed by `collection_index`. Java gets a
+  dialog made from the layout (`javapack/uiforms.go`, `uiview.go`, `uiexpr.go`;
+  `FormScreen.View`): the labels that are text as the body, every button that is there under
+  the form's own number.
+- **"Only one button" on the starter screen was the dialog's layout, not missing buttons.** All
+  13 were sent (9 starters, I choose you!, Exit, Up, Down), in one column under five body lines.
+  A Java dialog keeps the title and the Cancel row in place and scrolls the body and the buttons
+  between them, so a window shows the first button and the rest only after scrolling. That is
+  the likely reason and not a proven one: the 13 buttons on the wire are from the bot, the
+  real client's screen was not looked at again.
+  Now the buttons are in as many columns as the screen's fullest row of buttons (rows by the
+  buttons' `offset` y; 3 for the starter grid), each as wide as the longest label needs (6 px
+  a letter + 12, 44 to 150), as long as the columns fit 320 px. A heading that is used to name
+  buttons ("Kanto", "Johto", "Hoenn") is no longer a body line as well.
+- **Names of buttons.** What the layout writes on the button ("I choose you!"); for several
+  buttons with the same text and nothing written on them, the heading above and the place
+  under it ("Kanto 2"); else the button's own text ("exit" -> "Exit"). Of such a group, the
+  button whose picture differs from all the others' is the chosen one (the starter's `slot_on`
+  frame) and reads "> Kanto 2 <". A button the layout switches off (`#form_button_texture -
+  'none'`) is left out and the others keep their numbers.
+- **The Pokemon's name is not on the starter buttons, and the pack does not give it:** the form
+  has the name of the chosen one only (the body's first field, shown as the first body line),
+  and for the others a picture code (`i0100`...) for `textures/ui/cobblemon/icons/`. Nothing
+  in a pack ties such a code to a name. The player picks "Kanto 2", the dialog comes back with
+  "Charmander No. 0004" and its text, and "I choose you!" takes it. Showing the pictures would
+  need the pack's UI textures as glyphs of a font in the converted pack (a button label is
+  text); not done.
+- Test: `/root/jbtest/starterlive.sh` (the bot: `form N` clicks the form's button N). The bot
+  saw `> Kanto 1 <, Kanto 2, Kanto 3, Johto 1-3, Hoenn 1-3, I choose you!, Exit, Up, Down`,
+  `columns=3`, width 90; `form 1` brought the dialog back with Charmander and `> Kanto 2 <`,
+  `form 9` gave "You chose Charmander!".
+
+## Books
+
+- Bedrock has a book's text in the item NBT (`pages`: a list of `{text}`; signed: `title`,
+  `author`, `generation`), Java in `written_book_content` / `writable_book_content`
+  (`bridge/books.go`). A Java client opens a book and quill by itself and a written book only
+  on the server's `open_book`, which the bridge sends for a use of a written book in the main
+  hand.
+- A book from a loot table's `set_book_contents` (Cobblemon's README: `/loot give <player> loot
+  readme_book`, or `/execute as <player> run scriptevent cobblemon:readme`) arrives with all of
+  it in the NBT, and a name in `display.Name` as well.
+- **The bot's `raw=[]` did not mean the content was missing.** The item package (go-mcjava)
+  does not know the wire form of the book components, so its decoder stops at one: the bot
+  printed the stack as far as it got. With `jbbot -find "Kirbycope|Every control in one
+  place"` the author and the first page are in the inventory packet (`FOUND "Kirbycope" in
+  packet 0x12 (4620 bytes) at 302`), and open_book follows the use (`/root/jbtest/booklive.sh`).
+- **A 26.2 client did not get the content at all.** For a client older than the newest version
+  the item package leaves out every raw component whose wire form it does not know (it cannot
+  tell whether that version reads it the same way), so the book went out as a bare
+  written_book with a name: open_book then opens an empty book. `bridge/items_raw.go`
+  (`encodeStack`) puts the two book components back for such a client, between the components
+  set and the ones removed (`TestBookForOlderClient`). Their wire form has not changed since 1.20.5 as
+  far as known; that was not checked against a 26.2 client, and the book was not opened in a
+  real client of either version.
+- The same omission still holds for the other components the bridge writes raw: banner
+  patterns (`banner_patterns`) and armour trims (`trim`) do not reach a 26.2 client. They can
+  be added to `sameWireRaw` once someone has checked their wire form in 26.2 against 26.3; a
+  wrong one disconnects the client, so they were left. The cleaner fix is in go-mcjava: a kind
+  for "written the same in every version".
+- Not done: writing. A page edited or a book signed in Java (edit_book) is not sent on.
 
 ## Leads
 
@@ -592,6 +693,12 @@ What a Java client does by itself for a living mob, and cannot for one drawn wit
   does, armour and shield rules included), `qclick` (the same without waiting for the answer),
   `burst S1 S2 ...` (shift-clicks back to back, like a shift-double-click), `inv`, `close`, `hold N`,
   `useon X Y Z FACE`, `expectslot`. `ents` lists entities; adds and leads are logged as `ENT`.
+- `-find "TEXT|TEXT"` logs every play packet that holds one of the texts (`FOUND "TEXT" in packet
+  0x12 (N bytes) at OFFSET`): for what the bot cannot decode, a book's content above all. An item
+  whose line ends in `raw=[]` may still have components after the ones printed. `form N` clicks
+  button N of the last form dialog. `ents` prints a display's item with its tint when it has one,
+  and for a text display what it rides and where that puts it (`RIDE`): the bot does not move
+  passengers, a riding entity's own position stays where it was added.
 - Sleep steps: `wake` (Leave Bed), `sleepstat`; the bot lies in a bed as a 26.3 client does when
   its own entity data says so (`sleep.go`).
 - The bot is not an operator: give items and effects from the server console. On a flat world at
