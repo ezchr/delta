@@ -2,6 +2,7 @@ package javapack
 
 import (
 	"os"
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -30,7 +31,8 @@ const testFormUI = `{
      {"b0": {"type": "button", "size": [20, 20], "offset": [100, 50], "collection_index": 0,
        "bindings": [{"binding_type": "view", "source_property_name": "((#form_button_texture - 'none') = #form_button_texture)", "target_property_name": "#focus_enabled"}]}},
      {"b1": {"type": "button", "size": [20, 20], "offset": [125, 50], "collection_index": 1}},
-     {"b2": {"type": "button", "size": [60, 14], "offset": [10, 120], "collection_index": 2}}
+     {"b2": {"type": "button", "size": [60, 14], "offset": [10, 120], "collection_index": 2}},
+     {"b3": {"type": "button", "size": [20, 20], "offset": [150, 50], "collection_index": 3}}
    ]}}
   ]
  }
@@ -69,6 +71,37 @@ func TestFormScreens(t *testing.T) {
 	// The tab that shows only for a body starting with Z.
 	if got := strings.Join(s.Body(NewFormData("my:pick", "Zulbasaur "+body[10:])), "|"); !strings.Contains(got, "Other tab") {
 		t.Errorf("body with the other tab %q", got)
+	}
+}
+
+// TestFormView: every button of the screen that is there is shown, in the screen's columns, under
+// the form's own number; the heading that names buttons is not said twice, the chosen one is marked.
+func TestFormView(t *testing.T) {
+	src := &Source{files: map[string][]byte{"ui/server_form.json": []byte(testFormUI)}}
+	s := &FormScreensOf([]*Source{src})[0]
+	d := NewFormData("my:pick", "Bulbasaur "+"i001"+"Kanto "+"A seed on its back.")
+	v := s.View(d, []FormButtonIn{{"pick", "x/slot"}, {"pick", "x/slot_on"}, {"go", "x/go"}, {"pick", "x/slot"}})
+	var got []string
+	for _, b := range v.Buttons {
+		got = append(got, strconv.Itoa(b.Index)+"="+b.Label)
+	}
+	if g := strings.Join(got, "|"); g != "0=Kanto 1|1=> Kanto 2 <|2=Go!|3=Kanto 3" {
+		t.Errorf("buttons %q", g)
+	}
+	if g := strings.Join(v.Body, "|"); g != "Bulbasaur|A seed on its back." {
+		t.Errorf("body %q", g)
+	}
+	if v.Columns != 3 || v.Width != 11*6+12 {
+		t.Errorf("columns %d width %d", v.Columns, v.Width)
+	}
+	// A button the layout switches off is not there, and the others keep their numbers; one
+	// button under a heading keeps its own text, and the heading stays in the body.
+	v = s.View(d, []FormButtonIn{{"pick", "x/none"}, {"pick", "x/slot"}, {"go", "x/go"}})
+	if len(v.Buttons) != 2 || v.Buttons[0] != (ShownButton{1, "Pick"}) || v.Buttons[1] != (ShownButton{2, "Go!"}) {
+		t.Errorf("buttons with one hidden %+v", v.Buttons)
+	}
+	if g := strings.Join(v.Body, "|"); g != "Bulbasaur|Kanto|A seed on its back." || v.Columns != 1 || v.Width != 0 {
+		t.Errorf("body %q columns %d width %d", g, v.Columns, v.Width)
 	}
 }
 

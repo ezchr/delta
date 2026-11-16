@@ -331,7 +331,10 @@ func visibleText(t string) bool {
 
 // Body is the form's text as the screen shows it: the labels that are not written on buttons,
 // row by row.
-func (s *FormScreen) Body(d FormData) []string {
+func (s *FormScreen) Body(d FormData) []string { return s.body(d, nil) }
+
+// body is Body without the labels of skip (the headings that are written on buttons).
+func (s *FormScreen) body(d FormData, skip map[int]bool) []string {
 	var lines []string
 	var row []string
 	rowY := 0.0
@@ -343,7 +346,7 @@ func (s *FormScreen) Body(d FormData) []string {
 	}
 	for i := range s.Labels {
 		l := &s.Labels[i]
-		if l.onButton {
+		if l.onButton || skip[i] {
 			continue
 		}
 		t := l.text(d)

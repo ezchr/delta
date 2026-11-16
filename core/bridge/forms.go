@@ -76,15 +76,6 @@ func (p *Player) formScreen(title string) *javapack.FormScreen {
 	return nil
 }
 
-// buttonWords makes a button's internal name readable: "arrow_up" -> "Arrow up".
-func buttonWords(s string) string {
-	s = strings.TrimSpace(strings.NewReplacer("_", " ", ".", " ").Replace(s))
-	if s == "" {
-		return s
-	}
-	return strings.ToUpper(s[:1]) + s[1:]
-}
-
 func init() {
 	OnBedrock(packet.IDModalFormRequest, (*Player).showForm)
 	OnBedrock(packet.IDClientBoundCloseForm, func(p *Player, pk *packet.ClientBoundCloseForm) {
@@ -155,6 +146,7 @@ func (p *Player) showForm(pk *packet.ModalFormRequest) {
 
 	var body, buttons []string
 	var buttonIndex []int32 // the form's number of each button shown (nil: its place in buttons)
+	columns, width := int32(1), int32(0)
 	var inputs []formElement
 	switch bf.Type {
 	case "form":
@@ -165,32 +157,21 @@ func (p *Player) showForm(pk *packet.ModalFormRequest) {
 			elems = bf.Elements
 		}
 		if screen != nil {
-			data := javapack.NewFormData(string(bf.Title), content)
-			body = append(body, screen.Body(data)...)
-			same := map[string]int{}
+			// The screen's buttons are the form's by their number among its buttons.
+			var in []javapack.FormButtonIn
 			for _, e := range elems {
-				same[string(e.Text)]++
+				if e.Type == "" || e.Type == "button" {
+					in = append(in, javapack.FormButtonIn{Text: string(e.Text), Image: e.Image.Data})
+				}
 			}
-			n := int32(0)
-			for _, e := range elems {
-				if e.Type != "" && e.Type != "button" {
-					continue
-				}
-				i := n
-				n++
-				if screen.Hidden(int(i), e.Image.Data, data) {
-					continue
-				}
-				label := screen.ButtonLabel(int(i), data)
-				if label == "" && same[string(e.Text)] > 1 {
-					label = screen.ButtonHeader(int(i), data)
-				}
-				if label == "" {
-					label = buttonWords(string(e.Text))
-				}
-				buttons = append(buttons, label)
-				buttonIndex = append(buttonIndex, i)
+			view := screen.View(javapack.NewFormData(string(bf.Title), content), in)
+			body = view.Body
+			buttonIndex = []int32{}
+			for _, b := range view.Buttons {
+				buttons = append(buttons, b.Label)
+				buttonIndex = append(buttonIndex, int32(b.Index))
 			}
+			columns, width = int32(view.Columns), int32(view.Width)
 			break
 		}
 		body = appendBody(body, content)
@@ -230,19 +211,18 @@ func (p *Player) showForm(pk *packet.ModalFormRequest) {
 			if buttonIndex != nil {
 				n = buttonIndex[i]
 			}
-			writeButton(w, labelText(b), id, n)
+			writeButtonWidth(w, labelText(b), id, n, width)
 		}
 	}
 	if bf.Type == "modal" {
-		text.IntTag(w, "columns", 2)
-	} else {
-		text.IntTag(w, "columns", 1)
+		columns = 2
 	}
+	text.IntTag(w, "columns", columns)
 	text.Key(w, text.TagCompound, "exit_action")
 	writeButton(w, text.Translatable("gui.cancel"), id, -2)
 	w.Byte(text.TagEnd)
 	p.send(v777.ClientboundPlayShowDialog, w)
-	p.log.Debug("form shown", "id", pk.FormID, "type", bf.Type, "buttons", len(buttons), "inputs", len(inputs))
+	p.log.Debug("form shown", "id", pk.FormID, "type", bf.Type, "buttons", len(buttons), "columns", columns, "inputs", len(inputs))
 }
 
 var javaKeys = map[string]bool{"gui.yes": true, "gui.no": true, "gui.ok": true, "gui.cancel": true,
@@ -364,7 +344,15 @@ func writeInputs(w *wire.Writer, elems []formElement) {
 // writeButton writes a button compound's entries and its end: a label and a dynamic/custom
 // action whose payload is {f: id, b: button} (b -1: submit, -2: closed).
 func writeButton(w *wire.Writer, label text.Component, id, button int32) {
+	writeButtonWidth(w, label, id, button, 0)
+}
+
+// writeButtonWidth is writeButton for a button width pixels wide (0: the client's 150).
+func writeButtonWidth(w *wire.Writer, label text.Component, id, button, width int32) {
 	text.ComponentTag(w, "label", &label)
+	if width > 0 {
+		text.IntTag(w, "width", width)
+	}
 	text.Key(w, text.TagCompound, "action")
 	text.StringTag(w, "type", "minecraft:dynamic/custom")
 	text.StringTag(w, "id", formAction)
