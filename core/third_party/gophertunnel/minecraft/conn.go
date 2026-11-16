@@ -183,6 +183,10 @@ type Conn struct {
 	ignoredResourcePacks []exemptedResourcePack
 	// resourcePackCache, if set, stores resource packs downloaded by a Dialer for reuse on later logins.
 	resourcePackCache ResourcePackCache
+	// stages are when the login's steps were reached (LoginStages), for a caller that wants to
+	// know where a slow login spent its time.
+	stagesMu sync.Mutex
+	stages   []LoginStage
 	// resourcePackDelivery controls how a Listener connection sends resource pack data.
 	resourcePackDelivery ResourcePackDeliveryConfig
 
@@ -1007,6 +1011,7 @@ type saltClaims struct {
 // on the client side of the connection, using the hash and the public key from the server exposed in the
 // packet.
 func (conn *Conn) handleServerToClientHandshake(pk *packet.ServerToClientHandshake) error {
+	conn.mark("handshake")
 	tok, err := jwt.ParseSigned(string(pk.JWT), []jose.SignatureAlgorithm{jose.ES384})
 	if err != nil {
 		return fmt.Errorf("parse server token: %w", err)
@@ -1055,6 +1060,7 @@ func (conn *Conn) handleClientCacheStatus(pk *packet.ClientCacheStatus) error {
 // handleResourcePacksInfo handles a ResourcePacksInfo packet sent by the server. The client responds by
 // sending the packs it needs downloaded.
 func (conn *Conn) handleResourcePacksInfo(pk *packet.ResourcePacksInfo) error {
+	conn.mark("packs_info")
 	// First create a new resource pack queue with the information in the packet so we can download them
 	// properly later.
 	totalPacks := len(pk.TexturePacks)
@@ -1139,6 +1145,7 @@ func (conn *Conn) storeResourcePack(key ResourcePackCacheKey, pack *resource.Pac
 // handleResourcePackStack handles a ResourcePackStack packet sent by the server. The stack defines the order
 // that resource packs are applied in.
 func (conn *Conn) handleResourcePackStack(pk *packet.ResourcePackStack) error {
+	conn.mark("pack_stack")
 	// We currently don't apply resource packs in any way, so instead we just check if all resource packs in
 	// the stacks are also downloaded.
 	for _, pack := range pk.TexturePacks {
@@ -1479,6 +1486,7 @@ func (conn *Conn) handleDimensionData(pk *packet.DimensionData) error {
 // handleStartGame handles an incoming StartGame packet. It is the signal that the player has been added to a
 // world, and it obtains most of its dedicated properties.
 func (conn *Conn) handleStartGame(pk *packet.StartGame) error {
+	conn.mark("start_game")
 	conn.gameData = GameData{
 		Difficulty:                   pk.Difficulty,
 		WorldName:                    pk.WorldName,
@@ -1524,6 +1532,7 @@ func (conn *Conn) handleStartGame(pk *packet.StartGame) error {
 // handleItemRegistry handles an incoming ItemRegistry packet. It contains the item definitions that the client
 // should use, including the shield ID which is necessary for reading and writing items in the future.
 func (conn *Conn) handleItemRegistry(pk *packet.ItemRegistry) error {
+	conn.mark("item_registry")
 	conn.gameData.Items = pk.Items
 	for _, item := range pk.Items {
 		if item.Name == "minecraft:shield" {
@@ -1531,7 +1540,7 @@ func (conn *Conn) handleItemRegistry(pk *packet.ItemRegistry) error {
 		}
 	}
 
-	_ = conn.WritePacket(&packet.RequestChunkRadius{ChunkRadius: 16, MaxChunkRadius: 16})
+	_ = conn.WritePacket(&packet.RequestChunkRadius{ChunkRadius: LoginChunkRadius, MaxChunkRadius: 16})
 	conn.expect(packet.IDChunkRadiusUpdated, packet.IDPlayStatus)
 	return nil
 }
@@ -1557,6 +1566,7 @@ func (conn *Conn) handleRequestChunkRadius(pk *packet.RequestChunkRadius) error 
 // handleChunkRadiusUpdated handles an incoming ChunkRadiusUpdated packet, which updates the initial chunk
 // radius of the connection.
 func (conn *Conn) handleChunkRadiusUpdated(pk *packet.ChunkRadiusUpdated) error {
+	conn.mark("chunk_radius")
 	if pk.ChunkRadius < 1 {
 		return fmt.Errorf("expected chunk radius of at least 1, got %v", pk.ChunkRadius)
 	}
@@ -1746,3 +1756,28 @@ func (conn *Conn) closeErr(op string) error {
 		return conn.wrap(net.ErrClosed, op)
 	}
 }
+
+// LoginStage is a step of the login sequence and when its packet arrived.
+type LoginStage struct {
+	Name string
+	At   time.Time
+}
+
+func (conn *Conn) mark(name string) {
+	conn.stagesMu.Lock()
+	conn.stages = append(conn.stages, LoginStage{name, time.Now()})
+	conn.stagesMu.Unlock()
+}
+
+// LoginStages are the steps of the login sequence reached so far, in order: handshake,
+// packs_info, pack_stack, start_game, item_registry, chunk_radius.
+func (conn *Conn) LoginStages() []LoginStage {
+	conn.stagesMu.Lock()
+	defer conn.stagesMu.Unlock()
+	return append([]LoginStage(nil), conn.stages...)
+}
+
+// LoginChunkRadius is the chunk radius a dialled connection asks for while it logs in. A server
+// says "spawn" once it has sent the chunks of that radius, so a small one makes a login
+// shorter; the caller asks for its real radius (RequestChunkRadius) once it is in.
+var LoginChunkRadius int32 = 16

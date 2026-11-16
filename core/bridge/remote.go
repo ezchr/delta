@@ -135,14 +135,26 @@ func (p *Player) dial(ctx context.Context, target string) (*minecraft.Conn, erro
 	if !strings.Contains(addr, ":") {
 		addr += ":19132"
 	}
+	start := time.Now()
 	conn, err := d.DialContext(ctx, network, addr)
 	if err != nil {
 		return nil, err
 	}
+	dialed := time.Now()
 	if err := conn.DoSpawnContext(ctx); err != nil {
 		_ = conn.Close()
 		return nil, fmt.Errorf("spawn: %w", err)
 	}
+	// Where a join's time goes: when each step of the login arrived, counted from the dial.
+	if minecraft.LoginChunkRadius < fullChunkRadius {
+		// The login asked for a few chunks only, to be let in sooner: now the rest.
+		_ = conn.WritePacket(&packet.RequestChunkRadius{ChunkRadius: fullChunkRadius, MaxChunkRadius: fullChunkRadius})
+	}
+	stages := ""
+	for _, st := range conn.LoginStages() {
+		stages += fmt.Sprintf("%s +%dms ", st.Name, st.At.Sub(start).Milliseconds())
+	}
+	p.log.Debug("bedrock login", "stages", stages, "dialed", dialed.Sub(start).Round(time.Millisecond), "spawned", time.Since(start).Round(time.Millisecond))
 	return conn, nil
 }
 
@@ -333,3 +345,7 @@ func (r *Remote) capture(pk packet.Packet) {
 	_, _ = f.Write(hdr[:])
 	_, _ = f.Write(buf.Bytes())
 }
+
+// fullChunkRadius is the chunk radius asked of the server (it gives its own view distance when
+// that is less).
+const fullChunkRadius = 16

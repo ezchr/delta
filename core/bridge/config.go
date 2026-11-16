@@ -22,6 +22,7 @@ import (
 	jserver "github.com/ezchr/go-mcjava/server"
 	v776 "github.com/ezchr/go-mcjava/v776"
 	"github.com/ezchr/go-mcjava/wire"
+	"github.com/sandertv/gophertunnel/minecraft"
 	"github.com/sandertv/gophertunnel/minecraft/protocol/packet"
 )
 
@@ -88,6 +89,13 @@ func Run(c Config, l *jserver.Listener) {
 	debugPackets = option("debug_packets", "") != ""
 	debugAnim = option("debug_anim", "") != ""
 	animOff = option("animations", "on") == "off"
+	// A small radius while logging in: the server lets the player in once it has sent those
+	// chunks (measured on BDS 1.26.60: 1.7 s after the request for radius 2, 5.1 s for 16);
+	// the full radius is asked for right after (remote.go).
+	minecraft.LoginChunkRadius = 2
+	if n, err := strconv.Atoi(strings.TrimSpace(option("login_chunk_radius", ""))); err == nil && n >= 1 && n <= 16 {
+		minecraft.LoginChunkRadius = int32(n)
+	}
 	animParts, animFullMobs = anim.MaxParts, 0
 	switch v := strings.ToLower(strings.TrimSpace(option("anim_parts", ""))); v {
 	case "":

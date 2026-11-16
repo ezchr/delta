@@ -424,6 +424,50 @@ mob of that type is first shown, for its parts' bones only.
   jbbot's NPC handler used to eat the dialog packet before the form handler read the form id
   (`DIALOG form 0:` with nothing after it): fixed.
 
+## How long a join takes (the glass waiting room)
+
+- The waiting room is shown when the Bedrock login takes longer than `firstDialWait` (8 s,
+  `player.go`); the player is moved into the world when the login is done. The login's steps
+  are logged with `debug = true`: `bedrock login stages="handshake +36ms packs_info +49ms
+  pack_stack +60ms start_game +3189ms item_registry +3201ms chunk_radius +3227ms" dialed=8.293s`
+  (`minecraft.Conn.LoginStages`, added to the gophertunnel fork).
+- **A join that is not the first after a start** (loopback bdstest, Cobblemon world): the pack
+  exchange is 25 ms (packs come from the server's folders, kept in memory), BDS takes about 3 s
+  from there to StartGame (its own work: nothing to cut on our side), and then BDS says
+  "spawn" only once it has sent the chunks of the radius the client asked for. gophertunnel
+  asked for 16: 5.1 s. That put every join at 8 to 8.5 s, right at the waiting room's limit:
+  some joins showed it for half a second, some not. Now the login asks for radius 2
+  (`[core.options] login_chunk_radius`) and for 16 as soon as it is in: 1.7 s instead of 5.1,
+  4.5 s for the whole join, all 369 columns still arrive.
+- **The first join after a server start** is longer and still shows the waiting room: reading
+  the world's packs from disk (4 to 14 s for the 290 MB Cobblemon pack, depending on the file
+  cache), then converting them (12 to 18 s). The conversion needs the item and block
+  registries of StartGame, so it cannot run before a player is there, and its result is kept
+  in memory only. Not cut. What would cut it: keeping the conversion (pack, mapping, part
+  plans) on disk under its cache key, or a warm-up login at start.
+- BDS refuses a login of a name whose earlier session ended less than a few seconds ago
+  ("the server refused: no reason given"): leave 10 s between two test joins.
+- Test: `/root/jbtest/joinlive.sh` (outside the repository): two joins in a row, the stage lines.
+
+## A hit Pokemon that rises forever (not the bridge)
+
+- Seen on flat: a Gyarados hit once floated up and never stopped on the Java client. Reproduced
+  with the bot on bdstest (`/root/jbtest/hitlive.sh`): after the hit the display went from y 130
+  to 172 in 5 s and 220 in 11 s, about 7.8 blocks a second, and **the server has it there
+  too**: `execute at @e[type=cobblemon:p0130_gyarados,c=1] run tp <player> ~ ~ ~` put the player
+  at y 196.6 a few seconds later. The Java side shows what the server does.
+- Why it rises: the Cobblemon port gives Gyarados (and Charizard, and the other fliers) their
+  `minecraft:physics` only in the component group `cobblemon:gravity`; the base components have
+  none. A summoned Gyarados did not have it: summoned 3 blocks up it stayed in the air, and
+  without physics nothing takes the knockback of a hit away again (0.39 blocks a tick
+  upward). A Charizard summoned the same way came back down in an earlier run; why the two
+  differ was not found.
+- The displays are cleaned up: the part displays go when the mob leaves animation range (one
+  `remove_entities` with all of them), the mob's display and its hitbox when the server sends
+  RemoveActor (15 s after the hit in the bot run, when it was 120 blocks up and out of the
+  player's range). Whether the server then also despawns it, which would explain "No targets
+  matched" on flat, was not checked.
+
 ## Leads
 
 - **BDS tells what holds a lead with actor data `LEASH_HOLDER`** (key 37, int64): the holder's
