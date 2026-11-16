@@ -444,6 +444,10 @@ func (p *Player) levelSound(pk *packet.LevelSoundEvent) {
 		// A custom mob's own sounds are in the Bedrock pack, and sounds are not converted (they
 		// are most of a big pack's size). So that a hit is heard at all, hurt and death are the
 		// generic Java sounds; its other events (ambient, step, spawn) stay silent.
+		rid, shown := p.ents.byUnique[pk.EntityUniqueID]
+		if model := shown && p.packs.ents[rid] != nil; model && (ev == "hurt" || ev == "death") {
+			return // a mob drawn as a model: its hurt and death are heard from the actor events
+		}
 		switch ev {
 		case "hurt":
 			p.sendSound("entity.generic.hurt", entitySource(java), pos, 1, 1)

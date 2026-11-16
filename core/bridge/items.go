@@ -244,6 +244,7 @@ func (p *Player) javaStack(st protocol.ItemStack, js *jitem.Stack) {
 			js.Raw = append(js.Raw, jitem.RawComponent{Type: jitem.CompBannerPatterns, Data: w.B})
 		}
 	}
+	bookContent(js, nbt) // books.go
 	if rc, ok := nbtNum(nbt["RepairCost"]); ok && rc > 0 {
 		js.RepairCost = int32(rc)
 		js.Add(jitem.CompRepairCost)

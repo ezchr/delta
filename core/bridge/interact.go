@@ -151,6 +151,9 @@ func init() {
 		if r.Err != nil || p.rem == nil || p.inWaiting {
 			return r.Err
 		}
+		if hand == 0 && p.openHeldBook() { // books.go: a written book opens on the client
+			return nil
+		}
 		if hand == 0 {
 			p.win.closeStrayInventory()
 			if a := &p.win.act; a.liquidUsed {

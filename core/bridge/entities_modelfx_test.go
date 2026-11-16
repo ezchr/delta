@@ -48,7 +48,7 @@ func TestModelFx(t *testing.T) {
 	// Hurt: every part gets its item with the colour, in a bundle, and the plain one later.
 	p.dispatchBedrock(&packet.ActorEvent{EntityRuntimeID: 10, EventType: packet.ActorEventHurt})
 	out := take()
-	if items(out) != 4 || count(out, v777.ClientboundPlayBundleDelimiter) != 2 || me.tintUntil == 0 {
+	if items(out) != 4 || count(out, v777.ClientboundPlayBundleDelimiter) != 2 || me.tintUntil == 0 || count(out, v777.ClientboundPlaySound) != 1 {
 		t.Fatalf("hurt: %d item updates, tint until %d", items(out), me.tintUntil)
 	}
 	for i := 0; i < hurtTicks+1; i++ {
@@ -57,8 +57,13 @@ func TestModelFx(t *testing.T) {
 	if out = take(); items(out) != 4 || me.tintUntil != 0 {
 		t.Fatalf("after the flash: %d item updates, tint until %d", items(out), me.tintUntil)
 	}
-	// Its hurt sound: a custom mob's own sound is not in the Java pack, the generic one plays.
+	// A hurt level sound for it adds nothing (the event was heard); for a custom actor that is
+	// no model it plays the generic sound.
 	p.dispatchBedrock(&packet.LevelSoundEvent{SoundType: "hurt", EntityType: "t:walker", Position: mgl32.Vec3{0, 0, 4}, EntityUniqueID: -10})
+	if out = take(); count(out, v777.ClientboundPlaySound) != 0 {
+		t.Fatalf("a second hurt sound")
+	}
+	p.dispatchBedrock(&packet.LevelSoundEvent{SoundType: "hurt", EntityType: "t:other", Position: mgl32.Vec3{0, 0, 4}, EntityUniqueID: -99})
 	if out = take(); count(out, v777.ClientboundPlaySound) != 1 {
 		t.Fatalf("hurt sound: %d sound packets", count(out, v777.ClientboundPlaySound))
 	}

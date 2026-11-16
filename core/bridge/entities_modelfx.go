@@ -27,8 +27,9 @@ import (
 // crosshair" is for living entities only. The bridge works out which custom mob the player
 // looks at (a ray from the eyes along the view, against the mobs' boxes, up to aimNameRange
 // blocks) and shows that mob's name on a text display riding its hitbox, which puts it above
-// the box; it goes when the player looks away. A name the server always shows is left to the
-// mob's own entity data, as before.
+// the box; it goes when the player looks away. A name the server always shows is on such a
+// display all the time (the mob's own display has the name in its entity data as well, which
+// the client does not draw for a display entity).
 const (
 	hurtTint     = 0xFF5A5A // what the item's colours are multiplied with while hurt
 	aimNameRange = 8.0      // blocks: how far the name of a mob looked at shows
@@ -100,17 +101,27 @@ func (p *Player) modelFxTick() {
 	if ps.fxTicks%aimNameTicks != 0 {
 		return
 	}
-	aimed := p.aimedModel()
-	if aimed == ps.aimed {
-		return
+	// A name shows for the mob under the crosshair, and for every mob whose name the server
+	// always shows.
+	ps.aimed = p.aimedModel()
+	for rid, me := range ps.ents {
+		e := p.ents.shown[rid]
+		if e == nil {
+			continue
+		}
+		want := rid == ps.aimed || alwaysNamed(e)
+		switch {
+		case want && me.nameTag == 0:
+			p.showAimName(e, me)
+		case !want && me.nameTag != 0:
+			p.hideAimName(me)
+		}
 	}
-	if me := ps.ents[ps.aimed]; me != nil {
-		p.hideAimName(me)
-	}
-	ps.aimed = aimed
-	if me := ps.ents[aimed]; me != nil {
-		p.showAimName(p.ents.shown[aimed], me)
-	}
+}
+
+// alwaysNamed reports whether the server shows an actor's name whether it is looked at or not.
+func alwaysNamed(e *entity) bool {
+	return e.flag(protocol.EntityDataFlagAlwaysShowName) || metaInt(e.meta, protocol.EntityDataKeyAlwaysShowNameTag) != 0
 }
 
 // aimedModel is the runtime id of the custom mob under the player's crosshair (0: none).
@@ -157,9 +168,8 @@ func (p *Player) showAimName(e *entity, me *modelEntity) {
 		return
 	}
 	name, _, _ := strings.Cut(shownName(e, e.meta), "\n")
-	always := e.flag(protocol.EntityDataFlagAlwaysShowName) || metaInt(e.meta, protocol.EntityDataKeyAlwaysShowNameTag) != 0
 	typ := p.ver().BuiltinID("minecraft:entity_type", "minecraft:text_display")
-	if name == "" || always || typ < 0 {
+	if name == "" || typ < 0 {
 		return
 	}
 	me.nameTag = p.ents.next
@@ -216,10 +226,30 @@ func (p *Player) hideAimName(me *modelEntity) {
 
 func init() {
 	OnTick((*Player).modelFxTick)
+	OnBedrock(packet.IDLevelSoundEvent, func(p *Player, pk *packet.LevelSoundEvent) {
+		if debugAnim && pk.EntityType != "" && !strings.HasPrefix(pk.EntityType, "minecraft:") {
+			p.log.Info("anim level sound", "type", pk.EntityType, "sound", pk.SoundType, "uniq", pk.EntityUniqueID)
+		}
+	})
 	OnBedrock(packet.IDActorEvent, func(p *Player, pk *packet.ActorEvent) {
 		me := p.packs.ents[pk.EntityRuntimeID]
 		e := p.ents.shown[pk.EntityRuntimeID]
-		if me == nil || e == nil || pk.EventType != packet.ActorEventHurt {
+		if me != nil && debugAnim {
+			p.log.Info("anim actor event", "rid", pk.EntityRuntimeID, "event", pk.EventType, "data", pk.EventData)
+		}
+		if me == nil || e == nil {
+			return
+		}
+		// BDS sends no hurt or death level sound for a custom mob without sounds of its own
+		// (seen: a hit Charizard gives ActorEvent 2 and nothing else), so the generic Java
+		// sounds are played from the events.
+		switch pk.EventType {
+		case packet.ActorEventHurt:
+			p.sendSound("entity.generic.hurt", entitySource(""), e.pos, 1, 1)
+		case packet.ActorEventDeath:
+			p.sendSound("entity.generic.death", entitySource(""), e.pos, 1, 1)
+			return
+		default:
 			return
 		}
 		me.tintUntil = p.packs.fxTicks + hurtTicks
