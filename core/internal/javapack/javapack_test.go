@@ -135,4 +135,3 @@ func TestGeometry(t *testing.T) {
 		t.Fatalf("rotation %v %v %v", r.rx, r.ry, r.rz)
 	}
 }
-

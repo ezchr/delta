@@ -3,8 +3,8 @@ package bridge
 import (
 	"testing"
 
-	"github.com/df-mc/dragonfly/server/java/protocol/text"
-	"github.com/df-mc/dragonfly/server/java/protocol/wire"
+	"github.com/ezchr/go-mcjava/text"
+	"github.com/ezchr/go-mcjava/wire"
 )
 
 // TestClickPayload: a Java client sends custom_click_action's payload length-prefixed.

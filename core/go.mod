@@ -1,14 +1,16 @@
-module javabridge/core
+module delta/core
 
 go 1.26.7
 
 require (
 	github.com/df-mc/dragonfly v0.11.5
 	github.com/df-mc/go-nethernet v1.0.27
+	github.com/ezchr/go-mcjava v0.1.0
 	github.com/go-gl/mathgl v1.2.0
 	github.com/google/uuid v1.6.0
 	github.com/pion/webrtc/v4 v4.2.26
 	github.com/sandertv/gophertunnel v1.63.0
+	golang.org/x/oauth2 v0.36.0
 )
 
 require (
@@ -40,7 +42,6 @@ require (
 	golang.org/x/crypto v0.48.0 // indirect
 	golang.org/x/exp v0.0.0-20250103183323-7d7fa50e5329 // indirect
 	golang.org/x/net v0.50.0 // indirect
-	golang.org/x/oauth2 v0.36.0 // indirect
 	golang.org/x/sys v0.41.0 // indirect
 	golang.org/x/text v0.34.0 // indirect
 	golang.org/x/time v0.14.0 // indirect

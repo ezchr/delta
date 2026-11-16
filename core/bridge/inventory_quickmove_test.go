@@ -5,10 +5,10 @@ import (
 	"strings"
 	"testing"
 
-	"javabridge/core/internal/javamap"
+	"delta/core/internal/javamap"
 
-	jitem "github.com/df-mc/dragonfly/server/java/protocol/item"
-	"github.com/df-mc/dragonfly/server/java/protocol/version"
+	jitem "github.com/ezchr/go-mcjava/item"
+	"github.com/ezchr/go-mcjava/version"
 	"github.com/sandertv/gophertunnel/minecraft/protocol"
 	"github.com/sandertv/gophertunnel/minecraft/protocol/packet"
 )

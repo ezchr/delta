@@ -1,6 +1,6 @@
 # Configuration (docs/CONFIG.md)
 
-javabridge is one Endstone plugin. On first start it writes `plugins/javabridge/config.toml`:
+Delta is one Endstone plugin. On first start it writes `plugins/delta/config.toml`:
 
 ```toml
 [java]
@@ -35,7 +35,7 @@ below).
   each login the name is looked up with Mojang (`api.minecraftservices.com`, falling back to
   `api.mojang.com`):
   * **a premium account's name** must log in the online way (encryption + session-server
-    `hasJoined`). The **verified** profile is used, so the owner gets exactly the identity he has
+    `hasJoined`). The **verified** profile is used, so the owner gets exactly the identity they have
     in `online` mode: same Java UUID, same derived XUID, same player data, permissions and skin. A
     cracked client using a premium name cannot do that login and is refused (a client that tries
     and fails gets "`<name>` is a premium Minecraft account. Log in with that account to use this
@@ -45,7 +45,7 @@ below).
     between sessions. Anyone can use a free name — cracked servers need their own password login
     if that matters.
 
-  Answers are cached in `plugins/javabridge/premium_cache.json` (premium names 24 h, other names
+  Answers are cached in `plugins/delta/premium_cache.json` (premium names 24 h, other names
   1 h; kept up to 30 days as a fallback). **When the lookup fails** (Mojang down, HTTP 429 rate
   limit, network error, or more than 120 lookups in a minute) the last cached answer is used, even
   an expired one; with nothing cached the name is treated as **premium** (fail closed: its real
@@ -69,14 +69,14 @@ players and the listener does no Mojang checks in any mode; the mode then only p
 
 There are two different "online mode" settings and they are unrelated:
 
-| Setting | Where | What it does for javabridge |
+| Setting | Where | What it does for Delta |
 |---|---|---|
-| **javabridge `account_mode`** | `plugins/javabridge/config.toml` | Premium Mojang verification of **Java** players. Keep it `online`. |
+| **Delta `account_mode`** | `plugins/delta/config.toml` | Premium Mojang verification of **Java** players. Keep it `online`. |
 | **BDS `online-mode`** | `server.properties` | Xbox verification of **Bedrock** logins. **Keep it `false`.** |
 
-**Set BDS `online-mode=false`** (Endstone's default). javabridge's Java players reach BDS over
+**Set BDS `online-mode=false`** (Endstone's default). Delta's Java players reach BDS over
 loopback with a self-signed Bedrock login; BDS `online-mode=true` REFUSES self-signed logins during
-validation, so Java players could not join at all. javabridge does the account verification itself
+validation, so Java players could not join at all. Delta does the account verification itself
 (premium Mojang, on the Java side) and the bundled hook gives each Java player a stable XUID — so
 BDS `online-mode` adds nothing and only blocks Java players. If you leave BDS `online-mode=true`
 with the hook enabled, the plugin logs a warning telling you to set it to `false`.
@@ -123,23 +123,27 @@ same on both transports.
 
 `namespace_uuid` must be the same on the core and the hook (it keys the derived UUID/XUID and the
 `SelfSignedId` consistency check). The default is baked into both; only change it if you run several
-independent javabridge networks that must not share derived ids.
+independent Delta networks that must not share derived ids.
 
-## Bedrock players through a proxy: `[bedrock] trusted_proxies`
+## Bedrock players through a proxy
 
 A Bedrock proxy in front of this server (Beacon or another relay) verifies its players with Xbox
 Live and logs them in to BDS with a self-signed login that carries their real XUID, which an
-`online-mode=false` BDS drops. List the addresses the proxy connects from and javabridge restores
-that XUID, with the same bundled hook that gives Java players theirs:
+`online-mode=false` BDS drops. Delta restores it, with the same bundled hook that gives Java
+players theirs. Which proxies it believes, under `[bedrock]`:
 
-```toml
-[bedrock]
-trusted_proxies = ["127.0.0.1"]   # "local" = any address of this machine
-```
+| Setting | Default | What it does |
+|---|---|---|
+| `trusted_proxies` | `["local"]` when Java players get an identity (`online`/`hybrid`); off in `offline` | addresses whose logins keep their XUID; `"local"` = every address of this machine. `[]` turns it off |
+| `forwarding_secret_file` / `forwarding_secret` | none | Beacon's `forwarding.secret`: Beacon's signed login decides instead of the address, so Beacon may run on another machine |
+| `beacon_server_name` | any | with the secret: only claims for this server name (its name in `beacon.toml`) |
 
-This is what the separate xuidforward plugin does; do not install that plugin as well (both would
-patch the same BDS function). Whoever connects from a listed address is believed, so only use it
-when nothing but the proxy can reach the server's port (firewall). Empty (the default) is off.
-Tested 2026-11-15: a Bedrock client through a relay on loopback joined with its Xbox XUID
-(`staged [...] (relayed Bedrock player)` -> `Player connected: ..., xuid: <real>`), a Java player
-on the same server keeps the derived one.
+Address trust believes whoever connects from a listed address, so only use it when nothing but the
+proxy can reach the server's port (firewall). With BDS on `transport=nethernet`, a proxy on the same
+machine connects from the machine's public address, not 127.0.0.1: use `"local"`.
+
+**xuidforward:** a server that used the xuidforward plugin needs no new settings. When
+`config.toml` leaves these out, Delta reads `plugins/xuidforward/config.json` (allowed sources,
+forwarding secret, server name), so the plugin can simply be deleted. Both may also stay installed:
+Delta loads after xuidforward, which hooks BDS, and Java players then get their identity through
+its hook.

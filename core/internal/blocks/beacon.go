@@ -80,6 +80,7 @@ func networkBlockHash(name string, properties map[string]any) uint32 {
 	}
 	return h
 }
+
 // customBlockStates lists a custom block's states in the order the client registers them: every
 // combination of its properties' values, the FIRST property changing fastest (as Geyser generates
 // them, matching the client). Property values come as whatever NBT list type the server used
@@ -140,4 +141,3 @@ func fnv164(s string) uint64 {
 	}
 	return h
 }
-

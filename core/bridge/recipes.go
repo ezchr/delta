@@ -6,7 +6,7 @@ import (
 	"strconv"
 	"strings"
 
-	jitem "github.com/df-mc/dragonfly/server/java/protocol/item"
+	jitem "github.com/ezchr/go-mcjava/item"
 	"github.com/sandertv/gophertunnel/minecraft/protocol"
 	"github.com/sandertv/gophertunnel/minecraft/protocol/packet"
 )
@@ -46,7 +46,7 @@ type craftResult struct {
 	craft  func(q *stackRequest, times int)
 	single bool
 	cost   int
-	limit  int // most crafts at once (a trade's uses left; 0: no limit)
+	limit  int             // most crafts at once (a trade's uses left; 0: no limit)
 	taken  func(times int) // called once the craft was asked for
 }
 

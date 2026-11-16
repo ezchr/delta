@@ -5,7 +5,7 @@ import (
 	"time"
 
 	"github.com/df-mc/dragonfly/server/block/cube"
-	v777 "github.com/df-mc/dragonfly/server/java/protocol/v777"
+	v777 "github.com/ezchr/go-mcjava/v777"
 	"github.com/go-gl/mathgl/mgl32"
 	"github.com/go-gl/mathgl/mgl64"
 	"github.com/sandertv/gophertunnel/minecraft/protocol"

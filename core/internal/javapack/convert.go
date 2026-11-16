@@ -27,7 +27,7 @@ var (
 )
 
 // Namespace is the Java namespace the converted assets live in.
-const Namespace = "javabridge"
+const Namespace = "delta"
 
 // Input is what a conversion needs.
 type Input struct {
@@ -162,7 +162,7 @@ func Convert(in *Input) (*Result, error) {
 	b.res.Lang = b.lang
 	desc := in.Description
 	if desc == "" {
-		desc = "Bedrock server resources (javabridge)"
+		desc = "Bedrock server resources (delta)"
 	}
 	b.json("pack.mcmeta", map[string]any{"pack": map[string]any{
 		"description": desc, "min_format": minFormat, "max_format": maxFormat,
@@ -315,8 +315,8 @@ func (b *builder) safeName(kind, id string) string {
 	return s
 }
 
-// texture adds the texture at Bedrock path p under assets/javabridge/textures/<dir>/ and returns
-// its Java id ("javabridge:item/example/void_scythe").
+// texture adds the texture at Bedrock path p under assets/delta/textures/<dir>/ and returns
+// its Java id ("delta:item/example/void_scythe").
 func (b *builder) texture(dir, p string) (texInfo, bool) { return b.textureAt(dir, "", p) }
 
 // textureAt is texture for a path looked up in a subpack (root, "subpacks/<name>/") first.

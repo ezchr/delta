@@ -1,6 +1,6 @@
-# javabridge architecture
+# Delta architecture
 
-javabridge lets Java Edition players join a Bedrock Dedicated Server that runs
+Delta lets Java Edition players join a Bedrock Dedicated Server that runs
 [Endstone](https://github.com/EndstoneMC/endstone). It is **one Endstone plugin wheel**: drop it
 into `plugins/`, nothing else to install or run.
 
@@ -19,8 +19,8 @@ permissions and other plugins work on them unchanged.
 
 | Path | Owner | What |
 |---|---|---|
-| `core/` | core | Go module `javabridge/core`. |
-| `core/cmd/libjavabridge` | core | The c-shared library: C exports only (`jb_*`, see NATIVE.md). |
+| `core/` | core | Go module `delta/core`. |
+| `core/cmd/libdelta` | core | The c-shared library: C exports only (`jb_*`, see NATIVE.md). |
 | `core/host` | core | Host side of the library: one running service, log queue, panic-safe goroutines. |
 | `core/service` | core | JSON config -> running service (`bridge` mode, `spike` self-test), slog -> host log queue. |
 | `core/bridge` | core | The translator, one package, one file per area (see below). |
@@ -33,15 +33,15 @@ permissions and other plugins work on them unchanged.
 | `core/tools/genparticles` | core | Writes `internal/particles/particles_gen.go` (Geyser's particles.json reversed, the fallbacks, checked against the 26.3 registries). |
 | `core/tools/cmdcheck` | core | Java helper for `TestJavaClientCommands` (runs the real client's command parser; needs a client jar). |
 | `core/third_party/` | core | Vendored forks: Dragonfly's Java protocol packages and gophertunnel (THIRD_PARTY.md). |
-| `plugin/` | B | The Endstone Python plugin (`endstone_javabridge`). `_native.py` (the loader) is the core's interface; keep its API. |
+| `plugin/` | B | The Endstone Python plugin (`endstone_delta`). `_native.py` (the loader) is the core's interface; keep its API. |
 | `packconv/` | C | Bedrock -> Java resource pack conversion (Go). |
 | `tools/mkwheel.py` | core | Builds the wheel without a build backend. |
 | `build.sh` | core | Builds the library and the wheel. |
 | `docs/` | all | This file, NATIVE.md (C interface), STATUS.md, ORIGIN.md, THIRD_PARTY.md. |
 
 The project name is in one place per language: `bridge.ProductName` (Go, what players see),
-`NAME` in `tools/mkwheel.py` (wheel/dist name), the package directory `endstone_javabridge`
-(Endstone requires `endstone_<name>`), and the Go module path `javabridge/core`.
+`NAME` in `tools/mkwheel.py` (wheel/dist name), the package directory `endstone_delta`
+(Endstone requires `endstone_<name>`), and the Go module path `delta/core`.
 
 ## Process model
 

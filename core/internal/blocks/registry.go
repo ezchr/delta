@@ -30,12 +30,12 @@ func (r Registry) DefaultProperties(name string) (map[string]any, bool) {
 	return nil, false
 }
 
-func (r Registry) FilteringBlock(rid uint32) uint8      { return r.P.Filter(rid) }
-func (r Registry) LightBlock(rid uint32) uint8          { return r.P.Emits(rid) }
-func (r Registry) RandomTickBlock(uint32) bool          { return false }
-func (r Registry) NBTBlock(rid uint32) bool             { return r.P.BlockEntity(rid) != "" }
-func (r Registry) LiquidDisplacingBlock(uint32) bool    { return false }
-func (r Registry) LiquidBlock(rid uint32) bool          { return r.P.Liquid(rid) }
+func (r Registry) FilteringBlock(rid uint32) uint8   { return r.P.Filter(rid) }
+func (r Registry) LightBlock(rid uint32) uint8       { return r.P.Emits(rid) }
+func (r Registry) RandomTickBlock(uint32) bool       { return false }
+func (r Registry) NBTBlock(rid uint32) bool          { return r.P.BlockEntity(rid) != "" }
+func (r Registry) LiquidDisplacingBlock(uint32) bool { return false }
+func (r Registry) LiquidBlock(rid uint32) bool       { return r.P.Liquid(rid) }
 func (r Registry) HashToRuntimeID(h uint32) (uint32, bool) {
 	i, ok := r.P.byHash[h]
 	return i, ok

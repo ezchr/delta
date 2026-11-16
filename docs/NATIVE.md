@@ -1,7 +1,7 @@
 # Native interface
 
-The core is a Go library built with `go build -buildmode=c-shared` (`core/cmd/libjavabridge`).
-The plugin loads it with `ctypes` (`plugin/src/endstone_javabridge/_native.py`, class `Native`).
+The core is a Go library built with `go build -buildmode=c-shared` (`core/cmd/libdelta`).
+The plugin loads it with `ctypes` (`plugin/src/endstone_delta/_native.py`, class `Native`).
 The host always calls in; the library never calls back into Python. Logs are polled.
 
 | C function | Python (`Native`) | Meaning |

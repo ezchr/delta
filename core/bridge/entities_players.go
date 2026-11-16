@@ -9,9 +9,9 @@ import (
 	"sync"
 	"time"
 
-	jserver "github.com/df-mc/dragonfly/server/java/protocol/server"
-	v777 "github.com/df-mc/dragonfly/server/java/protocol/v777"
-	"github.com/df-mc/dragonfly/server/java/protocol/wire"
+	jserver "github.com/ezchr/go-mcjava/server"
+	v777 "github.com/ezchr/go-mcjava/v777"
+	"github.com/ezchr/go-mcjava/wire"
 	"github.com/go-gl/mathgl/mgl64"
 	"github.com/google/uuid"
 	"github.com/sandertv/gophertunnel/minecraft/protocol"

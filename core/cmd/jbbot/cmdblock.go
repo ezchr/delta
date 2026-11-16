@@ -5,8 +5,8 @@ import (
 	"strings"
 	"time"
 
-	v777 "github.com/df-mc/dragonfly/server/java/protocol/v777"
-	"github.com/df-mc/dragonfly/server/java/protocol/wire"
+	v777 "github.com/ezchr/go-mcjava/v777"
+	"github.com/ezchr/go-mcjava/wire"
 )
 
 // Command block checks (2026-11-10): the bot follows what a 26.3 client decides about the command

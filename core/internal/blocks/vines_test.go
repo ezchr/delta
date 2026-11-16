@@ -4,9 +4,9 @@ import (
 	"strconv"
 	"testing"
 
-	"javabridge/core/internal/javamap"
+	"delta/core/internal/javamap"
 
-	"github.com/df-mc/dragonfly/server/java/protocol/version"
+	"github.com/ezchr/go-mcjava/version"
 )
 
 // TestVineForms: every vine state has its Java tip and body form, the growth direction, the

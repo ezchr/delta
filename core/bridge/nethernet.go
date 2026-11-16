@@ -45,7 +45,7 @@ import (
 // address as 127.0.0.1 - which the online-identity hook's loopback trust check requires.
 
 // netherNetNetwork is the gophertunnel network id the bridge registers for this transport.
-const netherNetNetwork = "javabridge-nethernet"
+const netherNetNetwork = "delta-nethernet"
 
 // netherNetPrefix marks a NetherNet target in Config.Target.
 const netherNetPrefix = "nethernet:"

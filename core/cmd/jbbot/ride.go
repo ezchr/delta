@@ -16,8 +16,8 @@ import (
 	"strconv"
 	"time"
 
-	v777 "github.com/df-mc/dragonfly/server/java/protocol/v777"
-	"github.com/df-mc/dragonfly/server/java/protocol/wire"
+	v777 "github.com/ezchr/go-mcjava/v777"
+	"github.com/ezchr/go-mcjava/wire"
 )
 
 // rideState is the bot's vehicle (guarded by b.mu).

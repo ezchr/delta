@@ -3,10 +3,10 @@ package bridge
 import (
 	"strings"
 
-	"javabridge/core/internal/javamap"
+	"delta/core/internal/javamap"
 
 	"github.com/df-mc/dragonfly/server/block/cube"
-	jitem "github.com/df-mc/dragonfly/server/java/protocol/item"
+	jitem "github.com/ezchr/go-mcjava/item"
 	"github.com/go-gl/mathgl/mgl32"
 	"github.com/sandertv/gophertunnel/minecraft/protocol"
 	"github.com/sandertv/gophertunnel/minecraft/protocol/packet"

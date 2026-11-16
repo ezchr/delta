@@ -5,7 +5,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/df-mc/dragonfly/server/java/protocol/version"
+	"github.com/ezchr/go-mcjava/version"
 )
 
 // Vines: Bedrock keeps weeping vines, twisting vines, kelp and cave vines as one block each (cave

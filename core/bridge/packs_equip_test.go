@@ -3,10 +3,10 @@ package bridge
 import (
 	"testing"
 
-	jitem "github.com/df-mc/dragonfly/server/java/protocol/item"
-	"github.com/df-mc/dragonfly/server/java/protocol/wire"
+	jitem "github.com/ezchr/go-mcjava/item"
+	"github.com/ezchr/go-mcjava/wire"
 
-	"javabridge/core/internal/javapack"
+	"delta/core/internal/javapack"
 )
 
 // TestPackItemEquippable checks that worn add-on armour gets minecraft:equippable with the pack
@@ -14,9 +14,9 @@ import (
 // when the client has no pack.
 func TestPackItemEquippable(t *testing.T) {
 	res := &javapack.Result{
-		ItemModels: map[string]string{"t:x_helmet": "javabridge:t/x_helmet"},
+		ItemModels: map[string]string{"t:x_helmet": "delta:t/x_helmet"},
 		ItemNames:  map[string]string{},
-		ItemEquip:  map[string]javapack.Equip{"t:x_helmet": {Slot: "head", Asset: "javabridge:x_1"}, "t:x_boots": {Slot: "feet"}},
+		ItemEquip:  map[string]javapack.Equip{"t:x_helmet": {Slot: "head", Asset: "delta:x_1"}, "t:x_boots": {Slot: "feet"}},
 	}
 	p := &Player{}
 	p.rem = &Remote{jpack: &javaPack{packBuild: &packBuild{res: res}}}
@@ -24,14 +24,14 @@ func TestPackItemEquippable(t *testing.T) {
 	var js jitem.Stack
 	js.ID, js.Count = 1, 1
 	p.packItem("t:x_helmet", &js)
-	if !js.Has(jitem.CompEquippable) || js.Equippable == nil || js.Equippable.Slot != jitem.EquipSlotHead || js.Equippable.Model != "javabridge:x_1" {
+	if !js.Has(jitem.CompEquippable) || js.Equippable == nil || js.Equippable.Slot != jitem.EquipSlotHead || js.Equippable.Model != "delta:x_1" {
 		t.Fatalf("helmet equippable %+v", js.Equippable)
 	}
 	var w wire.Writer
 	js.Encode(&w)
 	var back jitem.Stack
 	back.Decode(&wire.Reader{B: w.B})
-	if back.Equippable == nil || back.Equippable.Model != "javabridge:x_1" || back.Equippable.Slot != jitem.EquipSlotHead || back.ItemModel != "javabridge:t/x_helmet" {
+	if back.Equippable == nil || back.Equippable.Model != "delta:x_1" || back.Equippable.Slot != jitem.EquipSlotHead || back.ItemModel != "delta:t/x_helmet" {
 		t.Fatalf("round trip %+v %q", back.Equippable, back.ItemModel)
 	}
 

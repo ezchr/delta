@@ -14,7 +14,7 @@ import (
 
 // OnlineIdentity is the provider for a BDS with online-mode=true (or whenever a stable XUID is
 // wanted). It builds a self-signed login that carries a digit XUID derived from the Java account,
-// so the javabridge plugin's hook (xuidforward) can trust it (the per-start Secret) and write the
+// so the delta plugin's hook (xuidforward) can trust it (the per-start Secret) and write the
 // XUID into BDS's login path. The same Java player is then the same BDS player across sessions.
 //
 // On its own this login would be refused by online-mode BDS; it only works with the plugin hook
@@ -58,6 +58,8 @@ func NewSecret() (string, error) {
 // broadcast player-list entry, so we build "2535" + 12 hash digits rather than a raw hash. It
 // stays in the real-XUID key space but the derived low digits make a real-account collision
 // vanishingly unlikely.
+// The identity hashes keep the project's first name (javabridge): changing it would give every
+// Java player a new XUID and UUID, and cut them off from their saves.
 func derivedXUID(javaUUID uuid.UUID) string {
 	h := sha256.Sum256([]byte("javabridge:xuid:" + javaUUID.String()))
 	low := binary.BigEndian.Uint64(h[:8]) % 1000000000000 // 12 digits

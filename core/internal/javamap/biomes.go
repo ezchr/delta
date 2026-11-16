@@ -3,7 +3,7 @@ package javamap
 import (
 	"sync"
 
-	v777 "github.com/df-mc/dragonfly/server/java/protocol/v777"
+	v777 "github.com/ezchr/go-mcjava/v777"
 )
 
 // BiomeID returns the Java biome network id (index in the minecraft:worldgen/biome registry sent during
@@ -15,7 +15,6 @@ func BiomeID(bedrockID int) int32 {
 	}
 	return t.plains
 }
-
 
 type biomes struct {
 	ids    []int32 // indexed by Bedrock biome id

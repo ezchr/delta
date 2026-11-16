@@ -3,7 +3,7 @@ package bridge
 import (
 	"context"
 
-	jserver "github.com/df-mc/dragonfly/server/java/protocol/server"
+	jserver "github.com/ezchr/go-mcjava/server"
 	"github.com/google/uuid"
 	"github.com/sandertv/gophertunnel/minecraft/protocol/login"
 	"golang.org/x/oauth2"
@@ -56,6 +56,8 @@ type IdentityProvider interface {
 type OfflineIdentity struct{}
 
 // BedrockLogin ...
+// The identity hashes keep the project's first name (javabridge): changing it would give every
+// Java player a new XUID and UUID, and cut them off from their saves.
 func (OfflineIdentity) BedrockLogin(_ context.Context, j JavaPlayer) (*BedrockLogin, error) {
 	return &BedrockLogin{IdentityData: login.IdentityData{
 		DisplayName: j.Name,

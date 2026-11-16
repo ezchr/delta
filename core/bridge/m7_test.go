@@ -13,8 +13,8 @@ import (
 	"testing"
 	"time"
 
-	jserver "github.com/df-mc/dragonfly/server/java/protocol/server"
-	"github.com/df-mc/dragonfly/server/java/protocol/wire"
+	jserver "github.com/ezchr/go-mcjava/server"
+	"github.com/ezchr/go-mcjava/wire"
 	"github.com/google/uuid"
 	"github.com/sandertv/gophertunnel/minecraft/protocol"
 )

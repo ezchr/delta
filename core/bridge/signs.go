@@ -4,9 +4,9 @@ import (
 	"strings"
 
 	"github.com/df-mc/dragonfly/server/block/cube"
-	"github.com/df-mc/dragonfly/server/java/protocol/text"
-	v777 "github.com/df-mc/dragonfly/server/java/protocol/v777"
-	"github.com/df-mc/dragonfly/server/java/protocol/wire"
+	"github.com/ezchr/go-mcjava/text"
+	v777 "github.com/ezchr/go-mcjava/v777"
+	"github.com/ezchr/go-mcjava/wire"
 )
 
 // Sign text: Bedrock keeps it in the sign's block entity (FrontText/BackText: Text with lines

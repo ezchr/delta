@@ -9,12 +9,12 @@ import (
 	"strings"
 	"time"
 
-	"javabridge/core/internal/blocks"
+	"delta/core/internal/blocks"
 
-	jchunk "github.com/df-mc/dragonfly/server/java/protocol/chunk"
-	"github.com/df-mc/dragonfly/server/java/protocol/text"
-	v777 "github.com/df-mc/dragonfly/server/java/protocol/v777"
-	"github.com/df-mc/dragonfly/server/java/protocol/wire"
+	jchunk "github.com/ezchr/go-mcjava/chunk"
+	"github.com/ezchr/go-mcjava/text"
+	v777 "github.com/ezchr/go-mcjava/v777"
+	"github.com/ezchr/go-mcjava/wire"
 )
 
 // Block entity and scoreboard checks: the bot logs block_entity_data (BE DATA), block events

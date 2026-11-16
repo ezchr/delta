@@ -7,9 +7,9 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/df-mc/dragonfly/server/java/protocol/text"
-	v777 "github.com/df-mc/dragonfly/server/java/protocol/v777"
-	"github.com/df-mc/dragonfly/server/java/protocol/wire"
+	"github.com/ezchr/go-mcjava/text"
+	v777 "github.com/ezchr/go-mcjava/v777"
+	"github.com/ezchr/go-mcjava/wire"
 	"github.com/sandertv/gophertunnel/minecraft/protocol"
 	"github.com/sandertv/gophertunnel/minecraft/protocol/packet"
 )
@@ -23,7 +23,7 @@ import (
 //	                  (input -> text, toggle -> boolean, slider -> number_range, dropdown and
 //	                  step_slider -> single_option) and a Done button
 //
-// Every button runs a dynamic/custom action (javabridge:form) whose payload has the form id and
+// Every button runs a dynamic/custom action (delta:form) whose payload has the form id and
 // the button plus the input values; the client sends it back as custom_click_action and the
 // bridge answers the server's form with ModalFormResponse. Cancel or Escape answers it as closed.
 // Button images are not shown.
@@ -46,13 +46,13 @@ type bedrockForm struct {
 }
 
 type formElement struct {
-	Type        string   `json:"type"`
+	Type        string     `json:"type"`
 	Text        formText   `json:"text"`
-	Default     any      `json:"default"`
+	Default     any        `json:"default"`
 	Placeholder formText   `json:"placeholder"`
-	Min         float64  `json:"min"`
-	Max         float64  `json:"max"`
-	Step        float64  `json:"step"`
+	Min         float64    `json:"min"`
+	Max         float64    `json:"max"`
+	Step        float64    `json:"step"`
 	Options     []formText `json:"options"`
 	Steps       []formText `json:"steps"`
 }

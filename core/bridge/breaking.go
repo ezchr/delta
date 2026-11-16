@@ -4,7 +4,7 @@ import (
 	"math"
 	"strings"
 
-	"javabridge/core/internal/blocks"
+	"delta/core/internal/blocks"
 
 	"github.com/df-mc/dragonfly/server/block/cube"
 	"github.com/sandertv/gophertunnel/minecraft/protocol"

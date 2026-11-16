@@ -14,7 +14,7 @@ import (
 	"syscall"
 	"time"
 
-	"javabridge/core/internal/blocks"
+	"delta/core/internal/blocks"
 
 	"github.com/sandertv/gophertunnel/minecraft"
 	"github.com/sandertv/gophertunnel/minecraft/protocol"

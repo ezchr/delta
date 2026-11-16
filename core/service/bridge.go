@@ -11,10 +11,10 @@ import (
 	"strings"
 	"time"
 
-	"javabridge/core/bridge"
-	"javabridge/core/host"
+	"delta/core/bridge"
+	"delta/core/host"
 
-	jserver "github.com/df-mc/dragonfly/server/java/protocol/server"
+	jserver "github.com/ezchr/go-mcjava/server"
 	"github.com/google/uuid"
 )
 

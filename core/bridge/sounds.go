@@ -6,12 +6,12 @@ import (
 	"strings"
 	"time"
 
-	"javabridge/core/internal/blocks"
-	"javabridge/core/internal/sounds"
+	"delta/core/internal/blocks"
+	"delta/core/internal/sounds"
 
 	"github.com/df-mc/dragonfly/server/block/cube"
-	v777 "github.com/df-mc/dragonfly/server/java/protocol/v777"
-	"github.com/df-mc/dragonfly/server/java/protocol/wire"
+	v777 "github.com/ezchr/go-mcjava/v777"
+	"github.com/ezchr/go-mcjava/wire"
 	"github.com/go-gl/mathgl/mgl64"
 	"github.com/sandertv/gophertunnel/minecraft/protocol"
 	"github.com/sandertv/gophertunnel/minecraft/protocol/packet"

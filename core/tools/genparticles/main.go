@@ -32,9 +32,9 @@ import (
 	"sort"
 	"strings"
 
-	"javabridge/core/internal/blocks"
+	"delta/core/internal/blocks"
 
-	v777 "github.com/df-mc/dragonfly/server/java/protocol/v777"
+	v777 "github.com/ezchr/go-mcjava/v777"
 )
 
 func main() {

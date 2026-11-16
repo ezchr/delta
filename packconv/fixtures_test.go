@@ -12,7 +12,7 @@ import (
 	"strings"
 	"testing"
 
-	"javabridge/packconv/render"
+	"delta/packconv/render"
 )
 
 // Fixture packs: tiny packs written here (no third-party content).
@@ -207,14 +207,14 @@ func TestFixtureFlatItem(t *testing.T) {
 	if im == nil || im.JavaBase != "minecraft:paper" || im.Model != "flat" || im.MaxStack != 16 || im.Name != "Fixture Gem" || im.Source != "behavior_pack" {
 		t.Fatalf("gem mapping %+v", im)
 	}
-	def := jsonOf(t, files, "assets/javabridge/items/fx/gem.json")
+	def := jsonOf(t, files, "assets/delta/items/fx/gem.json")
 	model := def["model"].(map[string]any)["model"].(string)
-	m := jsonOf(t, files, "assets/javabridge/models/"+strings.TrimPrefix(model, "javabridge:")+".json")
+	m := jsonOf(t, files, "assets/delta/models/"+strings.TrimPrefix(model, "delta:")+".json")
 	if m["parent"] != "minecraft:item/generated" {
 		t.Fatalf("gem model %v", m)
 	}
 	layer := m["textures"].(map[string]any)["layer0"].(string)
-	if !bytes.Equal(files["assets/javabridge/textures/"+strings.TrimPrefix(layer, "javabridge:")+".png"], fixtureRP()["textures/items/gem.png"]) {
+	if !bytes.Equal(files["assets/delta/textures/"+strings.TrimPrefix(layer, "delta:")+".png"], fixtureRP()["textures/items/gem.png"]) {
 		t.Fatal("gem texture not copied as is")
 	}
 	if res.ItemModels["fx:gem"] != im.ItemModel || res.ItemNames["fx:gem"] != "Fixture Gem" {
@@ -225,16 +225,16 @@ func TestFixtureFlatItem(t *testing.T) {
 	if sn.JavaBase != "minecraft:bread" || sn.Food == nil || sn.Food.Nutrition != 4 || sn.Food.UseSeconds != 1.2 {
 		t.Fatalf("snack %+v %+v", sn, sn.Food)
 	}
-	sm := jsonOf(t, files, "assets/javabridge/models/item/fx/snack.json")
+	sm := jsonOf(t, files, "assets/delta/models/item/fx/snack.json")
 	if sm["textures"].(map[string]any)["layer0"] != "minecraft:item/apple" {
 		t.Fatalf("snack icon %v", sm)
 	}
 	// Languages.
-	de := jsonOf(t, files, "assets/javabridge/lang/de_de.json")
+	de := jsonOf(t, files, "assets/delta/lang/de_de.json")
 	if de["item.fx:gem.name"] != "Testjuwel" {
 		t.Fatalf("de_de %v", de)
 	}
-	if jsonOf(t, files, "assets/javabridge/lang/en_us.json")["tile.fx:ore.name"] != "Fixture Ore" {
+	if jsonOf(t, files, "assets/delta/lang/en_us.json")["tile.fx:ore.name"] != "Fixture Ore" {
 		t.Fatal("lang tab comment not cut")
 	}
 }
@@ -289,12 +289,12 @@ func TestFixtureAttachableItem(t *testing.T) {
 	if im.Name != "Fixture Blade" || im.NameKey != "item.fx:blade" {
 		t.Fatalf("blade name %q %q", im.Name, im.NameKey)
 	}
-	def := jsonOf(t, files, "assets/javabridge/items/fx/blade.json")["model"].(map[string]any)
+	def := jsonOf(t, files, "assets/delta/items/fx/blade.json")["model"].(map[string]any)
 	if def["type"] != "minecraft:select" || def["property"] != "minecraft:display_context" {
 		t.Fatalf("blade definition %v", def)
 	}
 	held := def["fallback"].(map[string]any)["model"].(string)
-	m := jsonOf(t, files, "assets/javabridge/models/"+strings.TrimPrefix(held, "javabridge:")+".json")
+	m := jsonOf(t, files, "assets/delta/models/"+strings.TrimPrefix(held, "delta:")+".json")
 	if _, ok := m["display"].(map[string]any)["firstperson_righthand"]; !ok {
 		t.Fatal("no display transforms")
 	}
@@ -315,12 +315,12 @@ func TestFixtureArmour(t *testing.T) {
 	if h.Equipment.Asset == "" || h.Equipment.Asset != l.Equipment.Asset {
 		t.Fatalf("assets %q %q", h.Equipment.Asset, l.Equipment.Asset)
 	}
-	name := strings.TrimPrefix(h.Equipment.Asset, "javabridge:")
-	eq := jsonOf(t, files, "assets/javabridge/equipment/"+name+".json")["layers"].(map[string]any)
+	name := strings.TrimPrefix(h.Equipment.Asset, "delta:")
+	eq := jsonOf(t, files, "assets/delta/equipment/"+name+".json")["layers"].(map[string]any)
 	if eq["humanoid"] == nil || eq["humanoid_leggings"] == nil {
 		t.Fatalf("layers %v", eq)
 	}
-	hum, _ := png.Decode(bytes.NewReader(files["assets/javabridge/textures/entity/equipment/humanoid/"+name+".png"]))
+	hum, _ := png.Decode(bytes.NewReader(files["assets/delta/textures/entity/equipment/humanoid/"+name+".png"]))
 	src, _ := png.Decode(bytes.NewReader(fixtureRP()["textures/models/armor/fx_1.png"]))
 	// The helmet region is copied, the chestplate region (no chestplate) stays empty.
 	if !sameColour(hum.At(3, 5), src.At(3, 5)) {
@@ -329,7 +329,7 @@ func TestFixtureArmour(t *testing.T) {
 	if _, _, _, a := hum.At(20, 20).RGBA(); a != 0 {
 		t.Fatal("chestplate region filled without a chestplate")
 	}
-	legs := files["assets/javabridge/textures/entity/equipment/humanoid_leggings/"+name+".png"]
+	legs := files["assets/delta/textures/entity/equipment/humanoid_leggings/"+name+".png"]
 	li, _ := png.Decode(bytes.NewReader(legs))
 	ls, _ := png.Decode(bytes.NewReader(fixtureRP()["textures/models/armor/fx_2.png"]))
 	if !sameColour(li.At(10, 20), ls.At(10, 20)) {
@@ -371,7 +371,7 @@ func TestFixtureBlock(t *testing.T) {
 	if !strings.Contains(string(raw), `"y":90`) {
 		t.Fatalf("no turned state in %s", raw)
 	}
-	model := jsonOf(t, files, "assets/javabridge/models/block/fx/ore.json")
+	model := jsonOf(t, files, "assets/delta/models/block/fx/ore.json")
 	if model["parent"] != "minecraft:block/cube" {
 		t.Fatalf("ore model %v", model)
 	}
@@ -428,13 +428,13 @@ func TestFixtureOverridesSoundsReport(t *testing.T) {
 		t.Fatal("custom block texture treated as an override")
 	}
 	sm := res.Mapping.Sounds["fx.chirp"]
-	if sm == nil || sm.JavaEvent != "javabridge:fx.chirp" || sm.Files != 2 {
+	if sm == nil || sm.JavaEvent != "delta:fx.chirp" || sm.Files != 2 {
 		t.Fatalf("sound %+v", sm)
 	}
 	if _, ok := res.Mapping.Sounds["fx.old"]; ok {
 		t.Fatal(".fsb sound converted")
 	}
-	snd := jsonOf(t, files, "assets/javabridge/sounds.json")
+	snd := jsonOf(t, files, "assets/delta/sounds.json")
 	if snd["fx.chirp"] == nil {
 		t.Fatalf("sounds.json %v", snd)
 	}

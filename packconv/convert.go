@@ -39,7 +39,7 @@ var (
 )
 
 // Namespace is the default Java namespace of the converted assets.
-const Namespace = "javabridge"
+const Namespace = "delta"
 
 // Input is what a conversion needs.
 type Input struct {

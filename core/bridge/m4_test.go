@@ -10,7 +10,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/df-mc/dragonfly/server/java/protocol/wire"
+	"github.com/ezchr/go-mcjava/wire"
 	"github.com/sandertv/gophertunnel/minecraft"
 	"github.com/sandertv/gophertunnel/minecraft/protocol"
 	"github.com/sandertv/gophertunnel/minecraft/protocol/packet"
@@ -20,7 +20,7 @@ import (
 
 func TestMain(m *testing.M) {
 	cfg.Log = slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelError}))
-	cfg.LangFile = filepath.Join(os.TempDir(), "javabridge-no-such-lang-file") // the built-in copy
+	cfg.LangFile = filepath.Join(os.TempDir(), "delta-no-such-lang-file") // the built-in copy
 	os.Exit(m.Run())
 }
 

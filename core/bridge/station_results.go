@@ -5,10 +5,10 @@ import (
 	"sort"
 	"strings"
 
-	"javabridge/core/internal/javamap"
+	"delta/core/internal/javamap"
 
-	jitem "github.com/df-mc/dragonfly/server/java/protocol/item"
-	v777 "github.com/df-mc/dragonfly/server/java/protocol/v777"
+	jitem "github.com/ezchr/go-mcjava/item"
+	v777 "github.com/ezchr/go-mcjava/v777"
 	"github.com/sandertv/gophertunnel/minecraft/protocol"
 )
 

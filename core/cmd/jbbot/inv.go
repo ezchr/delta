@@ -18,10 +18,10 @@ import (
 	"strings"
 	"time"
 
-	jitem "github.com/df-mc/dragonfly/server/java/protocol/item"
-	"github.com/df-mc/dragonfly/server/java/protocol/text"
-	v777 "github.com/df-mc/dragonfly/server/java/protocol/v777"
-	"github.com/df-mc/dragonfly/server/java/protocol/wire"
+	jitem "github.com/ezchr/go-mcjava/item"
+	"github.com/ezchr/go-mcjava/text"
+	v777 "github.com/ezchr/go-mcjava/v777"
+	"github.com/ezchr/go-mcjava/wire"
 )
 
 // extraSteps and extraHandlers are the script steps and packet handlers of this file (main.go
@@ -247,7 +247,7 @@ func init() {
 		}
 		pl.Byte(text.TagEnd)
 		w := &wire.Writer{}
-		w.String("javabridge:form")
+		w.String("delta:form")
 		w.VarInt(int32(len(pl.B))) // the payload is length-prefixed, as a Java client sends it
 		w.Raw(pl.B)
 		b.write(v777.ServerboundPlayCustomClickAction, w)

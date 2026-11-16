@@ -16,14 +16,14 @@ import (
 	"sync"
 	"time"
 
-	jserver "github.com/df-mc/dragonfly/server/java/protocol/server"
-	v776 "github.com/df-mc/dragonfly/server/java/protocol/v776"
-	"github.com/df-mc/dragonfly/server/java/protocol/wire"
+	jserver "github.com/ezchr/go-mcjava/server"
+	v776 "github.com/ezchr/go-mcjava/v776"
+	"github.com/ezchr/go-mcjava/wire"
 	"github.com/sandertv/gophertunnel/minecraft/protocol/packet"
 )
 
 // ProductName is how the bridge names itself to players and in logs.
-const ProductName = "javabridge"
+const ProductName = "delta"
 
 // Config configures the bridge.
 type Config struct {

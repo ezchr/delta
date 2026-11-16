@@ -7,8 +7,8 @@ import (
 	"os"
 	"strings"
 
-	"github.com/df-mc/dragonfly/server/java/protocol/server"
-	"github.com/df-mc/dragonfly/server/java/protocol/wire"
+	"github.com/ezchr/go-mcjava/server"
+	"github.com/ezchr/go-mcjava/wire"
 )
 
 // velocityAnswer answers a login custom query. With -velocity, the "velocity:player_info" query

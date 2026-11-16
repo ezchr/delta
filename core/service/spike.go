@@ -10,7 +10,7 @@ import (
 	"sync"
 	"time"
 
-	"javabridge/core/host"
+	"delta/core/host"
 )
 
 // spike is the c-shared feasibility test (docs/STATUS.md, "Spike"): a TCP listener that

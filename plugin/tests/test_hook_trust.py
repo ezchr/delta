@@ -29,7 +29,7 @@ sys.modules["endstone.event"] = ev
 sys.modules["endstone.plugin"] = plugin_mod
 sys.modules["endstone.command"] = cmd_mod
 
-PKG = Path(sys.argv[1])  # path to the endstone_javabridge package dir
+PKG = Path(sys.argv[1])  # path to the endstone_delta package dir
 sys.path.insert(0, str(PKG.parent))
 
 import importlib.util

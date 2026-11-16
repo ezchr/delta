@@ -6,13 +6,13 @@ import (
 	"math"
 	"slices"
 
-	"javabridge/core/internal/blocks"
-	"javabridge/core/internal/javamap"
+	"delta/core/internal/blocks"
+	"delta/core/internal/javamap"
 
 	"github.com/df-mc/dragonfly/server/block/cube"
-	jchunk "github.com/df-mc/dragonfly/server/java/protocol/chunk"
-	v777 "github.com/df-mc/dragonfly/server/java/protocol/v777"
 	"github.com/df-mc/dragonfly/server/world/chunk"
+	jchunk "github.com/ezchr/go-mcjava/chunk"
+	v777 "github.com/ezchr/go-mcjava/v777"
 	"github.com/go-gl/mathgl/mgl64"
 	"github.com/sandertv/gophertunnel/minecraft/nbt"
 	"github.com/sandertv/gophertunnel/minecraft/protocol"

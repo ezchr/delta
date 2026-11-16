@@ -1,3 +1,3 @@
-module javabridge/packconv
+module delta/packconv
 
 go 1.26

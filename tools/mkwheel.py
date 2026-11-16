@@ -2,9 +2,9 @@
 """Build the plugin wheel without any build backend (standard library only).
 
     python3 tools/mkwheel.py --version 0.1.0 --plat linux_x86_64 \
-        --native build/libjavabridge-linux-amd64.so [--native ...] --out dist
+        --native build/libdelta-linux-amd64.so [--native ...] --out dist
 
-The package is plugin/src/endstone_javabridge; native libraries go into its native/ folder.
+The package is plugin/src/endstone_delta; native libraries go into its native/ folder.
 The result is deterministic for the same inputs (fixed timestamps, sorted entries).
 """
 
@@ -17,7 +17,7 @@ import os
 import zipfile
 from pathlib import Path
 
-NAME = "javabridge"  # the project name: the only place the wheel takes it from
+NAME = "delta"  # the project name: the only place the wheel takes it from
 DIST = f"endstone_{NAME}"
 STAMP = (2020, 1, 1, 0, 0, 0)
 
@@ -59,10 +59,10 @@ def main() -> None:
         "Requires-Python: >=3.10\n"
     ).encode()
     files[f"{info}/WHEEL"] = (
-        "Wheel-Version: 1.0\nGenerator: javabridge-mkwheel\nRoot-Is-Purelib: false\n"
+        "Wheel-Version: 1.0\nGenerator: delta-mkwheel\nRoot-Is-Purelib: false\n"
         f"Tag: py3-none-{a.plat}\n"
     ).encode()
-    files[f"{info}/entry_points.txt"] = f"[endstone]\n{NAME} = {DIST}:JavaBridgePlugin\n".encode()
+    files[f"{info}/entry_points.txt"] = f"[endstone]\n{NAME} = {DIST}:DeltaPlugin\n".encode()
     record = "".join(f"{k},{record_hash(v)},{len(v)}\n" for k, v in sorted(files.items()))
     record += f"{info}/RECORD,,\n"
     files[f"{info}/RECORD"] = record.encode()

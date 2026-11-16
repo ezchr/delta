@@ -1,7 +1,7 @@
 package bridge
 
 import (
-	"javabridge/core/internal/blocks"
+	"delta/core/internal/blocks"
 
 	"bytes"
 	"compress/gzip"
@@ -10,10 +10,10 @@ import (
 	"os"
 	"testing"
 
-	jchunk "github.com/df-mc/dragonfly/server/java/protocol/chunk"
-	v777 "github.com/df-mc/dragonfly/server/java/protocol/v777"
-	"github.com/df-mc/dragonfly/server/java/protocol/version"
-	"github.com/df-mc/dragonfly/server/java/protocol/wire"
+	jchunk "github.com/ezchr/go-mcjava/chunk"
+	v777 "github.com/ezchr/go-mcjava/v777"
+	"github.com/ezchr/go-mcjava/version"
+	"github.com/ezchr/go-mcjava/wire"
 	"github.com/sandertv/gophertunnel/minecraft/protocol"
 	"github.com/sandertv/gophertunnel/minecraft/protocol/packet"
 )

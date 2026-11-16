@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"javabridge/core/host"
+	"delta/core/host"
 )
 
 // Config is the JSON the plugin passes to jb_start. Unknown fields are ignored, so the plugin

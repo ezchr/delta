@@ -45,8 +45,8 @@ particles, resource packs (`packs.go`, `entities_custom.go`), login client data 
   stops with the bridge; off by default.
 * Device ids and the skin cache under the data directory.
 * `/jb status|ping|reconnect` instead of `/bb ...`; names shown to players come from
-  `ProductName`; the form/NPC click action ids are `javabridge:form`/`javabridge:npc`; the pack
-  namespace is `javabridge`.
+  `ProductName`; the form/NPC click action ids are `Delta:form`/`Delta:npc`; the pack
+  namespace is `Delta`.
 * Logging: most per-player lines are debug.
 
 ## Online identity (agent B)
@@ -58,5 +58,5 @@ particles, resource packs (`packs.go`, `entities_custom.go`), login client data 
   options.
 * `bridge/remote.go`: stitches the secret (Nonce) and SelfSignedId into the online login and keeps
   the derived XUID (`KeepXBLIdentityData`).
-* `plugin/src/endstone_javabridge/auth/`: the bundled xuidforward hook and the plugin-side staging
+* `plugin/src/endstone_delta/auth/`: the bundled xuidforward hook and the plugin-side staging
   (loopback + constant-time secret). See docs/THIRD_PARTY.md for the credit.

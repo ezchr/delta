@@ -21,9 +21,9 @@ import (
 	"strings"
 	"time"
 
-	jchunk "github.com/df-mc/dragonfly/server/java/protocol/chunk"
-	v777 "github.com/df-mc/dragonfly/server/java/protocol/v777"
-	"github.com/df-mc/dragonfly/server/java/protocol/wire"
+	jchunk "github.com/ezchr/go-mcjava/chunk"
+	v777 "github.com/ezchr/go-mcjava/v777"
+	"github.com/ezchr/go-mcjava/wire"
 )
 
 // jsimTick is called in physicsTick after ridingTick (main.go); true: it was a jrun tick.

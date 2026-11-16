@@ -26,8 +26,8 @@ import (
 	"sort"
 	"strings"
 
-	"javabridge/packconv"
-	"javabridge/packconv/render"
+	"delta/packconv"
+	"delta/packconv/render"
 )
 
 type list []string

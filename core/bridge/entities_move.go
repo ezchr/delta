@@ -3,7 +3,7 @@ package bridge
 import (
 	"math"
 
-	v777 "github.com/df-mc/dragonfly/server/java/protocol/v777"
+	v777 "github.com/ezchr/go-mcjava/v777"
 	"github.com/go-gl/mathgl/mgl64"
 	"github.com/sandertv/gophertunnel/minecraft/protocol/packet"
 )

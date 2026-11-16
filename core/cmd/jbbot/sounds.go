@@ -8,8 +8,8 @@ import (
 	"strings"
 	"time"
 
-	v777 "github.com/df-mc/dragonfly/server/java/protocol/v777"
-	"github.com/df-mc/dragonfly/server/java/protocol/wire"
+	v777 "github.com/ezchr/go-mcjava/v777"
+	"github.com/ezchr/go-mcjava/wire"
 )
 
 // Sound and particle checks: the bot logs sound and sound_entity (SOUND, with the entity's type),

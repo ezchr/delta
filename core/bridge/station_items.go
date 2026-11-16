@@ -4,7 +4,7 @@ import (
 	"reflect"
 	"strings"
 
-	jitem "github.com/df-mc/dragonfly/server/java/protocol/item"
+	jitem "github.com/ezchr/go-mcjava/item"
 	"github.com/sandertv/gophertunnel/minecraft/protocol"
 )
 
@@ -35,48 +35,48 @@ const (
 )
 
 var enchantData = [...]enchantInfo{
-	0:  {4, 1, grpProtection, "armour", false},       // protection
-	1:  {4, 2, grpProtection, "armour", false},       // fire protection
-	2:  {4, 2, 0, "boots", false},                    // feather falling
-	3:  {4, 4, grpProtection, "armour", false},       // blast protection
-	4:  {4, 2, grpProtection, "armour", false},       // projectile protection
-	5:  {3, 8, 0, "armour", false},                   // thorns
-	6:  {3, 4, 0, "helmet", false},                   // respiration
-	7:  {3, 4, grpBoots, "boots", false},             // depth strider
-	8:  {1, 4, 0, "helmet", false},                   // aqua affinity
-	9:  {5, 1, grpDamage, "sword|axe|spear", false},  // sharpness
+	0:  {4, 1, grpProtection, "armour", false},           // protection
+	1:  {4, 2, grpProtection, "armour", false},           // fire protection
+	2:  {4, 2, 0, "boots", false},                        // feather falling
+	3:  {4, 4, grpProtection, "armour", false},           // blast protection
+	4:  {4, 2, grpProtection, "armour", false},           // projectile protection
+	5:  {3, 8, 0, "armour", false},                       // thorns
+	6:  {3, 4, 0, "helmet", false},                       // respiration
+	7:  {3, 4, grpBoots, "boots", false},                 // depth strider
+	8:  {1, 4, 0, "helmet", false},                       // aqua affinity
+	9:  {5, 1, grpDamage, "sword|axe|spear", false},      // sharpness
 	10: {5, 2, grpDamage, "sword|axe|mace|spear", false}, // smite
 	11: {5, 2, grpDamage, "sword|axe|mace|spear", false}, // bane of arthropods
-	12: {2, 2, 0, "sword|spear", false},              // knockback
-	13: {2, 4, 0, "sword|mace|spear", false},         // fire aspect
-	14: {3, 4, 0, "sword|spear", false},              // looting
-	15: {5, 1, 0, "tool|shears", false},              // efficiency
-	16: {1, 8, grpMining, "tool", false},             // silk touch
-	17: {3, 2, 0, "*", false},                        // unbreaking
-	18: {3, 4, grpMining, "tool", false},             // fortune
-	19: {5, 1, 0, "bow", false},                      // power
-	20: {2, 4, 0, "bow", false},                      // punch
-	21: {1, 4, 0, "bow", false},                      // flame
-	22: {1, 8, grpBow, "bow", false},                 // infinity
-	23: {3, 4, 0, "fishing_rod", false},              // luck of the sea
-	24: {3, 4, 0, "fishing_rod", false},              // lure
-	25: {2, 4, grpBoots, "boots", false},             // frost walker
-	26: {1, 4, grpBow, "*", false},                   // mending
-	27: {1, 8, 0, "armour|elytra|head", true},        // curse of binding
-	28: {1, 8, 0, "*|head|compass", true},            // curse of vanishing
-	29: {5, 4, 0, "trident", false},                  // impaling
-	30: {3, 4, grpTrident, "trident", false},         // riptide
-	31: {3, 1, grpTrident, "trident", false},         // loyalty
-	32: {1, 8, grpTrident, "trident", false},         // channeling
-	33: {1, 4, grpCrossbow, "crossbow", false},       // multishot
-	34: {4, 1, grpCrossbow, "crossbow", false},       // piercing
-	35: {3, 2, 0, "crossbow", false},                 // quick charge
-	36: {3, 8, 0, "boots", false},                    // soul speed
-	37: {3, 8, 0, "leggings", false},                 // swift sneak
-	38: {3, 4, 0, "mace", false},                     // wind burst
-	39: {5, 2, grpDamage, "mace", false},             // density
-	40: {4, 4, grpDamage, "mace", false},             // breach
-	41: {3, 2, 0, "spear", false},                    // lunge
+	12: {2, 2, 0, "sword|spear", false},                  // knockback
+	13: {2, 4, 0, "sword|mace|spear", false},             // fire aspect
+	14: {3, 4, 0, "sword|spear", false},                  // looting
+	15: {5, 1, 0, "tool|shears", false},                  // efficiency
+	16: {1, 8, grpMining, "tool", false},                 // silk touch
+	17: {3, 2, 0, "*", false},                            // unbreaking
+	18: {3, 4, grpMining, "tool", false},                 // fortune
+	19: {5, 1, 0, "bow", false},                          // power
+	20: {2, 4, 0, "bow", false},                          // punch
+	21: {1, 4, 0, "bow", false},                          // flame
+	22: {1, 8, grpBow, "bow", false},                     // infinity
+	23: {3, 4, 0, "fishing_rod", false},                  // luck of the sea
+	24: {3, 4, 0, "fishing_rod", false},                  // lure
+	25: {2, 4, grpBoots, "boots", false},                 // frost walker
+	26: {1, 4, grpBow, "*", false},                       // mending
+	27: {1, 8, 0, "armour|elytra|head", true},            // curse of binding
+	28: {1, 8, 0, "*|head|compass", true},                // curse of vanishing
+	29: {5, 4, 0, "trident", false},                      // impaling
+	30: {3, 4, grpTrident, "trident", false},             // riptide
+	31: {3, 1, grpTrident, "trident", false},             // loyalty
+	32: {1, 8, grpTrident, "trident", false},             // channeling
+	33: {1, 4, grpCrossbow, "crossbow", false},           // multishot
+	34: {4, 1, grpCrossbow, "crossbow", false},           // piercing
+	35: {3, 2, 0, "crossbow", false},                     // quick charge
+	36: {3, 8, 0, "boots", false},                        // soul speed
+	37: {3, 8, 0, "leggings", false},                     // swift sneak
+	38: {3, 4, 0, "mace", false},                         // wind burst
+	39: {5, 2, grpDamage, "mace", false},                 // density
+	40: {4, 4, grpDamage, "mace", false},                 // breach
+	41: {3, 2, 0, "spear", false},                        // lunge
 }
 
 // itemKind is what kind of item a server item name is, for enchantments.

@@ -24,7 +24,7 @@ import (
 	"sync"
 	"time"
 
-	jserver "github.com/df-mc/dragonfly/server/java/protocol/server"
+	jserver "github.com/ezchr/go-mcjava/server"
 	"github.com/google/uuid"
 	"github.com/sandertv/gophertunnel/minecraft/protocol"
 	"github.com/sandertv/gophertunnel/minecraft/protocol/login"

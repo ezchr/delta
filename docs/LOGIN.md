@@ -6,13 +6,13 @@ How a Java player's loopback connection becomes a correctly identified, stably-k
 
 Two unrelated settings share the name "online mode":
 
-* **javabridge `account_mode`** (`plugins/javabridge/config.toml`) — premium Mojang verification of
+* **Delta `account_mode`** (`plugins/delta/config.toml`) — premium Mojang verification of
   **Java** players. Default `online`; `hybrid` verifies only premium names; `offline` none. This is
   what "online" means throughout this document.
 * **BDS `server.properties online-mode`** — Xbox verification of **Bedrock** logins. **Keep it
   `false`** (Endstone's default). See below.
 
-javabridge verifies Java accounts itself and gives each a stable Bedrock XUID; BDS online-mode is
+Delta verifies Java accounts itself and gives each a stable Bedrock XUID; BDS online-mode is
 neither used nor wanted for the loopback logins (it would block them). See CONFIG.md.
 
 ## The problem
@@ -135,13 +135,13 @@ login. No work here.
 ## The player-list crash (owner's concern) — tested, no crash
 
 A Bedrock client can crash when it opens the pause-menu player list if another player's broadcast
-entry carries a malformed XUID. javabridge players appear as ordinary Bedrock players, so their XUID
+entry carries a malformed XUID. Delta players appear as ordinary Bedrock players, so their XUID
 must be well-formed. The derived XUID (`2535` + 12 hash digits) is a well-formed 16-digit decimal in
 the real-XUID key space.
 
-**Verified in game (2026-11-15):** with a javabridge Java player and a real Xbox-authenticated
+**Verified in game (2026-11-15):** with a Delta Java player and a real Xbox-authenticated
 Bedrock client on the same `online-mode=false` BDS, teleported together, the Bedrock client
-rendered the javabridge player's full model and processed its broadcast player-list entry (derived
+rendered the Delta player's full model and processed its broadcast player-list entry (derived
 XUID) with **zero decode errors and no crash**. The empty-XUID broadcast fallback described in
 earlier drafts is therefore **not needed**. (The real Bedrock client used was Cinnabar, which has no
 vanilla pause-menu player-list screen to click; the crash mechanism — decoding and rendering the
@@ -151,12 +151,12 @@ remaining manual confirmation.)
 ## Manual confirmations still open
 
 1. **Vanilla Bedrock roster screen:** join a retail Bedrock client to an `online-mode=false` test
-   BDS alongside a javabridge Java player and open the pause-menu player list. Expected: no crash
+   BDS alongside a Delta Java player and open the pause-menu player list. Expected: no crash
    (the entry already decodes and renders cleanly on a real client).
 2. **Real premium Java playthrough via Velocity:** premium auth + Velocity modern forwarding to
-   javabridge is **proven** (a real Ezchr Mojang account authenticated through Velocity and the
-   backend connected). What is **not** working is a **1.21.x client fully playing a 26.3 javabridge
+   Delta is **proven** (a real Ezchr Mojang account authenticated through Velocity and the
+   backend connected). What is **not** working is a **1.21.x client fully playing a 26.3 Delta
    through ViaVersion** — the 1.21→26.3 registry/config translation drops the client with a
    "Network Protocol Error" after the backend connects. This is a client-version-breadth matter, not
-   a login matter. Fix options (future work): javabridge natively supporting 1.21.x clients, or a
+   a login matter. Fix options (future work): Delta natively supporting 1.21.x clients, or a
    closer Via path. A native 26.2/26.3 Java client joins directly without this.

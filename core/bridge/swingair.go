@@ -1,7 +1,7 @@
 package bridge
 
 import (
-	v777 "github.com/df-mc/dragonfly/server/java/protocol/v777"
+	v777 "github.com/ezchr/go-mcjava/v777"
 )
 
 // A Java 26.3 client sends punch for every arm swing: at the air, but also when it starts breaking

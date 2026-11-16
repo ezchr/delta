@@ -16,9 +16,9 @@ import (
 	"sync"
 	"sync/atomic"
 
-	"javabridge/core/internal/javamap"
+	"delta/core/internal/javamap"
 
-	"github.com/df-mc/dragonfly/server/java/protocol/version"
+	"github.com/ezchr/go-mcjava/version"
 	"github.com/sandertv/gophertunnel/minecraft/nbt"
 	"github.com/sandertv/gophertunnel/minecraft/protocol"
 )

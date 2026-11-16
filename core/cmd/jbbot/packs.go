@@ -15,8 +15,8 @@ import (
 	"strings"
 	"time"
 
-	v777 "github.com/df-mc/dragonfly/server/java/protocol/v777"
-	"github.com/df-mc/dragonfly/server/java/protocol/wire"
+	v777 "github.com/ezchr/go-mcjava/v777"
+	"github.com/ezchr/go-mcjava/wire"
 )
 
 // Resource packs (bridge/packs.go): the bot answers resource_pack_push like a client that accepts
@@ -29,7 +29,7 @@ var (
 	packList    = flag.Bool("packlist", false, "log every file of a resource pack")
 )
 
-var modelRef = regexp.MustCompile(`javabridge:[a-z0-9/._-]+`)
+var modelRef = regexp.MustCompile(`delta:[a-z0-9/._-]+`)
 
 func init() {
 	// First, so container packets (inv.go answers them) are seen too; it never stops the chain.

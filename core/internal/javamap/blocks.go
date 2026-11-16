@@ -39,7 +39,6 @@ func BlockStatesWithMisses(reg chunk.BlockRegistry) (table []int32, misses []uin
 	return table, misses
 }
 
-
 // lookupHash finds the Java state of a Bedrock network block hash in stateTable.
 func lookupHash(h uint32) (int32, bool) {
 	key := uint64(h) << 32

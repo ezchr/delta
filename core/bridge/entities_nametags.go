@@ -5,7 +5,7 @@ import (
 	"strings"
 	"unicode/utf8"
 
-	v777 "github.com/df-mc/dragonfly/server/java/protocol/v777"
+	v777 "github.com/ezchr/go-mcjava/v777"
 	"github.com/sandertv/gophertunnel/minecraft/protocol"
 )
 

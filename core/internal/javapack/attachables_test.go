@@ -201,26 +201,26 @@ func TestArmorAndHeld(t *testing.T) {
 	}
 	name := func(asset string) string { return asset[len(Namespace)+1:] }
 	for _, p := range []string{
-		"assets/javabridge/equipment/" + name(c.Asset) + ".json",
-		"assets/javabridge/equipment/" + name(l.Asset) + ".json",
-		"assets/javabridge/textures/entity/equipment/humanoid/" + name(c.Asset) + ".png",
-		"assets/javabridge/textures/entity/equipment/humanoid_leggings/" + name(l.Asset) + ".png",
-		"assets/javabridge/models/item/t/sword_held.json",
-		"assets/javabridge/items/t/sword.json",
+		"assets/delta/equipment/" + name(c.Asset) + ".json",
+		"assets/delta/equipment/" + name(l.Asset) + ".json",
+		"assets/delta/textures/entity/equipment/humanoid/" + name(c.Asset) + ".png",
+		"assets/delta/textures/entity/equipment/humanoid_leggings/" + name(l.Asset) + ".png",
+		"assets/delta/models/item/t/sword_held.json",
+		"assets/delta/items/t/sword.json",
 	} {
 		if got[p] == nil {
 			t.Errorf("missing %s", p)
 		}
 	}
 	var eq map[string]map[string][]map[string]string
-	_ = json.Unmarshal(got["assets/javabridge/equipment/"+name(l.Asset)+".json"], &eq)
+	_ = json.Unmarshal(got["assets/delta/equipment/"+name(l.Asset)+".json"], &eq)
 	if eq["layers"]["humanoid_leggings"][0]["texture"] != l.Asset {
-		t.Fatalf("leggings asset %s", got["assets/javabridge/equipment/"+name(l.Asset)+".json"])
+		t.Fatalf("leggings asset %s", got["assets/delta/equipment/"+name(l.Asset)+".json"])
 	}
 	var def map[string]map[string]any
-	_ = json.Unmarshal(got["assets/javabridge/items/t/sword.json"], &def)
+	_ = json.Unmarshal(got["assets/delta/items/t/sword.json"], &def)
 	if def["model"]["type"] != "minecraft:select" || def["model"]["property"] != "minecraft:display_context" {
-		t.Fatalf("sword item definition %s", got["assets/javabridge/items/t/sword.json"])
+		t.Fatalf("sword item definition %s", got["assets/delta/items/t/sword.json"])
 	}
 	var held struct {
 		Elements []struct {
@@ -228,9 +228,9 @@ func TestArmorAndHeld(t *testing.T) {
 		} `json:"elements"`
 		Display map[string]struct{ Rotation, Translation, Scale []float64 } `json:"display"`
 	}
-	_ = json.Unmarshal(got["assets/javabridge/models/item/t/sword_held.json"], &held)
+	_ = json.Unmarshal(got["assets/delta/models/item/t/sword_held.json"], &held)
 	if len(held.Elements) != 2 || len(held.Display["thirdperson_righthand"].Scale) != 3 {
-		t.Fatalf("held model %s", got["assets/javabridge/models/item/t/sword_held.json"])
+		t.Fatalf("held model %s", got["assets/delta/models/item/t/sword_held.json"])
 	}
 	for _, e := range held.Elements {
 		for i := 0; i < 3; i++ {

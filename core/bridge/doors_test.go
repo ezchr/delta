@@ -3,7 +3,7 @@ package bridge
 import (
 	"testing"
 
-	"javabridge/core/internal/blocks"
+	"delta/core/internal/blocks"
 )
 
 // TestDoorHalves: an opened door (open in the lower half, hinge in the upper half) shows both

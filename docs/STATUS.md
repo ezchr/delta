@@ -5,7 +5,7 @@ Last update: Stage 1 (join, world, movement, chat), 2026-11-15.
 ## Spike: Go c-shared inside BDS (PASSED)
 
 A Go 1.27 `-buildmode=c-shared` library loaded with ctypes from the Endstone 0.11.15 Python plugin
-inside BDS 1.26.60 (Linux x86-64), `mode = "spike"` (`core/service/spike.go`, `/jbcore stress N`):
+inside BDS 1.26.60 (Linux x86-64), `mode = "spike"` (`core/service/spike.go`, `/deltacore stress N`):
 
 | Check | Result |
 |---|---|
@@ -63,7 +63,7 @@ BDS `server.properties online-mode` (which must stay false; the plugin warns oth
 | a | Online Java login ACCEPTED on BDS, player keyed on the stable XUID | headless 26.3 bot over loopback: `online identity: staged ... xuid=2535996142166303` -> BDS `Player connected/Spawned ... xuid: 2535996142166303`, walked 369 chunks | works |
 | b | A login WITHOUT the secret / not from loopback is NOT staged | plugin trust-gate unit test (`plugin/tests/test_hook_trust.py`, 7 cases, constant-time compare, loopback+secret both required) + live: a no-secret login connects with an EMPTY xuid | works |
 | c | Identity STABLE across logins | three sequential joins all keyed `xuid: 2535996142166303` | works |
-| d | Real Bedrock client + javabridge player together: player list does not crash | Cinnabar (Xbox-auth gamertag, real XUID) + javabridge player on one BDS; broadcast entry decoded (0 errors) and player rendered in 3D point-blank; no crash/panic in the client | works (no crash) |
+| d | Real Bedrock client + Delta player together: player list does not crash | Cinnabar (Xbox-auth gamertag, real XUID) + Delta player on one BDS; broadcast entry decoded (0 errors) and player rendered in 3D point-blank; no crash/panic in the client | works (no crash) |
 | premium | Verified Mojang UUID drives identity; invalid session rejected; stable | stubbed-session-server Go tests (`core/service/premium_test.go`): accepted login uses the VERIFIED profile UUID (not the handshake name), a 403 session is refused, same account -> same XUID | works |
 
 Fail-safe: on a BDS build with no bundled profile, ONLINE identity is disabled with a log line and
@@ -71,7 +71,7 @@ offline still works; BDS is never crashed.
 
 Open manual confirmations: a vanilla retail Bedrock client opening the pause-menu player list
 (Cinnabar has no such screen; the crash mechanism was exercised); a 1.21.x client fully playing a
-26.3 javabridge through ViaVersion (premium auth via Velocity forwarding is PROVEN with a real
+26.3 Delta through ViaVersion (premium auth via Velocity forwarding is PROVEN with a real
 account, but the 1.21->26.3 registry translation drops the client - see docs/LOGIN.md).
 
 ## What is stubbed / not done
@@ -117,7 +117,7 @@ NetherNet dial needs no patching of BDS at all.
 | Loopback trust gate | same | staged = Endstone saw the NetherNet peer as 127.0.0.1 (loopback-only ICE candidates) |
 | account_mode=offline | bot | joined with an empty XUID, 369 chunks, chat |
 | Two Java players at once | 2 bots | both joined, keyed on their own XUIDs, both left cleanly |
-| `/reload`, leak | rejoin after `/reload`; `/jbcore goroutines` | rejoin works; goroutines back to 3 |
+| `/reload`, leak | rejoin after `/reload`; `/deltacore goroutines` | rejoin works; goroutines back to 3 |
 | BDS restart right after a join | stop + start at once | starts (signaling connections are closed with a reset, so BDS's port is not left in TIME_WAIT; with plain closes BDS failed with "Port [..] may be in use" for a minute) |
 | RakNet regression | same server, `transport=raknet` | joined, 369 chunks, chat |
 | `online-mode=true` | bot | NetherNet connects, the self-signed Login is refused (same as RakNet; the plugin's existing warning applies) |
@@ -154,7 +154,7 @@ protocol package). Older/newer clients are refused at login.
 On Linux amd64 with Go >= 1.26 and Python 3:
 
 ```
-./build.sh                       # build/libjavabridge-linux-amd64.so + dist/*.whl
+./build.sh                       # build/libdelta-linux-amd64.so + dist/*.whl
 VERSION=0.1.1 ./build.sh         # PEP 440 version
 ```
 
@@ -162,15 +162,15 @@ On a shared machine: `BUILD_WRAP='flock /tmp/build.lock env GOMAXPROCS=2 nice -n
 The library needs glibc >= 2.34 (BDS itself needs newer). Wheel tag `py3-none-linux_x86_64`.
 
 Windows (not done yet): `GOOS=windows GOARCH=amd64 CGO_ENABLED=1 CC=x86_64-w64-mingw32-gcc go
-build -buildmode=c-shared -o build/javabridge-windows-amd64.dll ./cmd/libjavabridge` needs mingw-w64
+build -buildmode=c-shared -o build/Delta-windows-amd64.dll ./cmd/libdelta` needs mingw-w64
 on the build machine; `_native.library_filename()` already looks for that name; the wheel tag would
 be `win_amd64` (`tools/mkwheel.py --plat win_amd64`). On Windows a loaded DLL cannot be replaced,
 which matches the load-once rule.
 
 ## Install
 
-Copy `dist/endstone_javabridge-*.whl` into the server's `plugins/` and start the server. The
-plugin writes `plugins/javabridge/config.toml` on first start:
+Copy `dist/endstone_delta-*.whl` into the server's `plugins/` and start the server. The
+plugin writes `plugins/delta/config.toml` on first start:
 
 ```toml
 [java]
@@ -197,5 +197,5 @@ debug = false
 * `core/cmd/jbbot`: scripted Java 26.3 client: `go build -o jbbot ./cmd/jbbot`, then
   `./jbbot -addr 127.0.0.1:25565 -name Bot -script 'wait 5; chat hi; cmd list; walk 3 sprint; quit'`.
   Steps are listed in its source (main.go, inv.go, entities.go ...).
-* `/jbcore <method> [json]` (operators) calls the core: `players`, `status`, `goroutines`,
+* `/deltacore <method> [json]` (operators) calls the core: `players`, `status`, `goroutines`,
   `stacks`, `debug true|false`.

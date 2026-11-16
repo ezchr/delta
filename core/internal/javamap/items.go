@@ -1,6 +1,5 @@
 package javamap
 
-
 type itemKey struct {
 	name string
 	meta int16
@@ -20,4 +19,3 @@ func ItemID(name string, meta int16) (id int32, ok bool) {
 	}
 	return JavaItemBarrier, false
 }
-

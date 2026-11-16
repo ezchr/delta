@@ -3,7 +3,7 @@ package bridge
 import (
 	"strings"
 
-	v777 "github.com/df-mc/dragonfly/server/java/protocol/v777"
+	v777 "github.com/ezchr/go-mcjava/v777"
 )
 
 // The player's own item use (eating, drinking, bows, tridents, crossbows...).

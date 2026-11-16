@@ -16,7 +16,7 @@ import (
 	"os"
 	"strings"
 
-	"javabridge/packconv"
+	"delta/packconv"
 )
 
 type list []string

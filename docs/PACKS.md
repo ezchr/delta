@@ -1,6 +1,6 @@
 # Resource packs: Bedrock -> Java
 
-`packconv/` (Go module `javabridge/packconv`, standard library only) turns the Bedrock resource
+`packconv/` (Go module `delta/packconv`, standard library only) turns the Bedrock resource
 packs a server uses, plus the custom item/block definitions of its behaviour packs or of its
 runtime registries, into
 
@@ -83,33 +83,33 @@ south (yaw 0), it appears where the Bedrock bone is. `model_yaw: 180` is the
 
 ```json
 {
-  "schema": 1, "converter_version": 2, "namespace": "javabridge", "pack_sha1": "<hex>",
+  "schema": 1, "converter_version": 2, "namespace": "Delta", "pack_sha1": "<hex>",
   "items": {
-    "ns:blade": {"java_base": "minecraft:diamond_sword", "item_model": "javabridge:ns/blade", "kind": "sword",
+    "ns:blade": {"java_base": "minecraft:diamond_sword", "item_model": "Delta:ns/blade", "kind": "sword",
                  "model": "3d", "name": "Blade", "name_key": "item.ns:blade", "max_stack": 1, "max_damage": 250,
                  "glint": false, "source": "behavior_pack"},
     "ns:helmet": {"java_base": "minecraft:diamond_helmet", "item_model": "...", "kind": "helmet", "model": "flat",
-                  "equipment": {"slot": "head", "asset": "javabridge:ns"}, "source": "runtime"},
+                  "equipment": {"slot": "head", "asset": "Delta:ns"}, "source": "runtime"},
     "ns:snack": {"java_base": "minecraft:bread", "kind": "food", "model": "flat", "item_model": "...",
                  "food": {"nutrition": 4, "saturation": 4.8, "use_seconds": 1.2, "animation": "eat"}, "source": "..."}
   },
   "blocks": {
     "ns:ore": {"java_state": "minecraft:brown_mushroom_block[down=true,east=true,north=true,south=true,up=true,west=true]",
-               "slot": 0, "solid": true, "name": "Ore", "name_key": "tile.ns:ore.name", "item_model": "javabridge:ns/ore",
+               "slot": 0, "solid": true, "name": "Ore", "name_key": "tile.ns:ore.name", "item_model": "Delta:ns/ore",
                "variants": [{"states": {"minecraft:cardinal_direction": "east", "ns:lit": false},
                              "java_state": "minecraft:brown_mushroom_block[...]", "slot": 1}],
                "approximate": "", "fallback": ""}
   },
   "entities": {
-    "ns:critter": {"model": "javabridge:entity/ns/critter", "scale": 1, "translation": [0, 0.3125, 0],
+    "ns:critter": {"model": "Delta:entity/ns/critter", "scale": 1, "translation": [0, 0.3125, 0],
                    "model_yaw": 180, "width": 0.75, "height": 0.75, "stand_in": "minecraft:fox",
-                   "parts": [{"bone": "head", "parent": "body", "model": "javabridge:entity/ns/critter/head",
+                   "parts": [{"bone": "head", "parent": "body", "model": "Delta:entity/ns/critter/head",
                               "offset": [0, 0.5, 0.375], "pivot": [0, 8, -6], "rotation": [15, 30, 0],
                               "scale": 1, "display": "fixed"}],
                    "bones": [{"name": "body", "pivot": [0, 6, 0], "rotation": [0, 0, 0], "cubes": 1}],
                    "unsupported": ["animation walk (animation.ns.walk)"]}
   },
-  "sounds": {"ns.chirp": {"java_event": "javabridge:ns.chirp", "category": "neutral", "files": 2}},
+  "sounds": {"ns.chirp": {"java_event": "Delta:ns.chirp", "category": "neutral", "files": 2}},
   "entity_sounds": {"ns:critter": {"ambient": "ns.chirp"}},
   "overrides": ["block/stone"],
   "languages": ["de_de", "en_us"]

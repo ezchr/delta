@@ -3,7 +3,7 @@ package bridge
 import (
 	"testing"
 
-	"javabridge/core/internal/blocks"
+	"delta/core/internal/blocks"
 )
 
 // TestPackSlots checks there are spare Java states for custom blocks, solid and passable, that

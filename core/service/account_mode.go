@@ -3,7 +3,7 @@ package service
 import (
 	"strings"
 
-	jserver "github.com/df-mc/dragonfly/server/java/protocol/server"
+	jserver "github.com/ezchr/go-mcjava/server"
 )
 
 // How the Java listener checks a login with Mojang.

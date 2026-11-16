@@ -1,7 +1,7 @@
 package main
 
 // NPC dialogue steps of jbbot (the original bridge npc.go): the bridge shows an NPC dialogue as a dialog
-// whose buttons run javabridge:npc with {n: dialog, b: button}. The bot logs `NPC DIALOG n: text`
+// whose buttons run delta:npc with {n: dialog, b: button}. The bot logs `NPC DIALOG n: text`
 // for each one and `CLEAR DIALOG`, and answers like a Java client clicking a button or pressing
 // Escape (the exit action, b -2).
 //
@@ -14,9 +14,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/df-mc/dragonfly/server/java/protocol/text"
-	v777 "github.com/df-mc/dragonfly/server/java/protocol/v777"
-	"github.com/df-mc/dragonfly/server/java/protocol/wire"
+	"github.com/ezchr/go-mcjava/text"
+	v777 "github.com/ezchr/go-mcjava/v777"
+	"github.com/ezchr/go-mcjava/wire"
 )
 
 var bnpc struct {
@@ -67,7 +67,7 @@ func npcHandle(b *bot, id int32, r *wire.Reader) bool {
 	switch id {
 	case v777.ClientboundPlayShowDialog:
 		body := r.Rest()
-		if !strings.Contains(string(body), "javabridge:npc") {
+		if !strings.Contains(string(body), "delta:npc") {
 			bnpc.open = false
 			return false
 		}
@@ -86,7 +86,7 @@ func npcHandle(b *bot, id int32, r *wire.Reader) bool {
 	return false
 }
 
-// npcClick sends custom_click_action javabridge:npc for the last NPC dialog.
+// npcClick sends custom_click_action delta:npc for the last NPC dialog.
 func npcClick(b *bot, button int32) {
 	b.mu.Lock()
 	id := bnpc.id
@@ -100,7 +100,7 @@ func npcClick(b *bot, button int32) {
 	text.IntTag(pl, "b", button)
 	pl.Byte(text.TagEnd)
 	w := &wire.Writer{}
-	w.String("javabridge:npc")
+	w.String("delta:npc")
 	w.VarInt(int32(len(pl.B)))
 	w.Raw(pl.B)
 	b.write(v777.ServerboundPlayCustomClickAction, w)
