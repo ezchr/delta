@@ -12,8 +12,9 @@ from pathlib import Path
 # --- stub endstone.event so hook.py imports without Endstone ---
 ev = types.ModuleType("endstone.event")
 ev.PacketReceiveEvent = type("PacketReceiveEvent", (), {})
-def event_handler(fn):  # passthrough decorator
-    return fn
+ev.EventPriority = types.SimpleNamespace(HIGHEST=4, NORMAL=2)
+def event_handler(fn=None, **_kw):  # passthrough decorator, with or without arguments
+    return fn if fn is not None else (lambda f: f)
 ev.event_handler = event_handler
 endstone = types.ModuleType("endstone")
 endstone.__path__ = []  # mark as package

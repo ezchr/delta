@@ -26,8 +26,9 @@ import hmac
 import ipaddress
 from pathlib import Path
 
-from endstone.event import PacketReceiveEvent, event_handler
+from endstone.event import EventPriority, PacketReceiveEvent, event_handler
 
+from .beacon_claim import ClaimVerifier
 from .login_body import is_self_signed, names_for_staging, parse_login_body
 
 LOGIN_PACKET_ID = 0x01
@@ -77,6 +78,12 @@ class IdentityHook:
         self._installed = False
         self._secret = b""
         self._proxies: set = set()
+        # A Beacon forwarding secret (ClaimVerifier): Beacon's signed claim then decides for
+        # relayed players instead of their address, as in xuidforward's forwarding mode.
+        self._claims: ClaimVerifier | None = None
+        # Borrowed: the xuidforward plugin hooked BDS first. This hook then stages only Java
+        # players' identities, through xuidforward's own shim, and leaves relayed players to it.
+        self._borrowed = False
 
     def set_proxies(self, sources) -> None:
         """Addresses a Bedrock proxy (Beacon or another relay) logs players in from
@@ -96,6 +103,21 @@ class IdentityHook:
         if not self._proxies or not host:
             return False
         return host.strip().lower().split("%", 1)[0].strip("[]") in self._proxies
+
+    def set_claims(self, verifier: "ClaimVerifier | None") -> None:
+        """Beacon's forwarding secret, as a claim verifier (None: trust by address only)."""
+        self._claims = verifier
+
+    def borrow(self, shim) -> None:
+        """Use the xuidforward plugin's installed shim for Java players only (both plugins
+        installed, xuidforward hooked BDS first)."""
+        self._shim = shim
+        self._installed = True
+        self._borrowed = True
+
+    @property
+    def borrowed(self) -> bool:
+        return self._borrowed
 
     def set_secret(self, secret: str) -> None:
         """The per-start trust secret (jb_call('identity_secret')). Re-read after every reload."""
@@ -169,6 +191,8 @@ class IdentityHook:
 
     def uninstall(self) -> None:
         self._installed = False
+        if self._borrowed:
+            return  # xuidforward's hook: it removes it itself
         if self._shim is not None:
             try:
                 self._shim.xf_uninstall()
@@ -176,7 +200,9 @@ class IdentityHook:
             except Exception as e:  # noqa: BLE001
                 self._log.warning(f"online identity: hook not cleanly removed: {e}")
 
-    @event_handler
+    # HIGHEST: after the xuidforward plugin's own handler (NORMAL) when both are installed, so it
+    # can't clear a Java player's identity staged here.
+    @event_handler(priority=EventPriority.HIGHEST)
     def on_packet_receive(self, event: PacketReceiveEvent) -> None:
         if self._shim is None or not self._installed:
             return
@@ -198,6 +224,23 @@ class IdentityHook:
         # the proxy has verified them with Xbox Live and passes their real XUID on).
         if loopback and secret_ok:
             source = "java"
+        elif self._borrowed:
+            return  # xuidforward decides for every other login
+        elif self._claims is not None:
+            # Beacon's forwarding secret is set: its signed claim decides, wherever the login
+            # comes from (Beacon may run on another machine).
+            if not parsed:
+                self._clear(parsed)
+                return
+            ok, reason = self._claims.verify(
+                parsed.get("beacon_claim"), parsed.get("client_key", ""), parsed.get("xuid", ""), parsed.get("xname", "")
+            )
+            if not ok:
+                self._clear(parsed)
+                if parsed.get("xuid") and (parsed.get("auth_type") is None or is_self_signed(parsed)):
+                    self._log.warning(f"online identity: login {parsed.get('xname')!r} from {host} keeps no XUID: {reason}")
+                return
+            source = "proxy"
         elif self._from_proxy(host):
             source = "proxy"
         else:

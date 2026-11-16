@@ -16,7 +16,9 @@ from pathlib import Path
 from endstone.plugin import Plugin
 
 from . import _native
+from .auth.beacon_claim import ClaimVerifier, read_secret
 from .auth.hook import IdentityHook
+from .auth.trust_config import read_xuidforward_config, trust_settings
 
 DEFAULT_CONFIG = """\
 # javabridge configuration
@@ -42,12 +44,12 @@ port = 0
 # How the bridge reaches this server over loopback: "auto" (default) follows server.properties
 # `transport` (RakNet, or NetherNet for transport=nethernet); "raknet" or "nethernet" force one.
 transport = "auto"
-# Bedrock proxy in front of this server (Beacon, another relay)? List the addresses it connects
-# from, e.g. ["127.0.0.1"] for one on this machine ("local" = any address of this machine). Its
-# players then keep their real Xbox XUID here (the xuidforward plugin, built in: do not install
-# that plugin as well). Only do this when nothing but the proxy can reach this server's port
-# (firewall): whoever connects from these addresses is believed. Empty = off.
-trusted_proxies = []
+# Bedrock players coming through a proxy (Beacon, WaterdogPE) keep their real Xbox XUID: the
+# xuidforward plugin is built in. Had xuidforward? Nothing to change: its config.json is read, and
+# both may stay installed. Trusted by address ("local" = any address of this machine, the default):
+# trusted_proxies = ["local"]
+# Or by Beacon's signature, for a Beacon on another machine (Beacon's forwarding.secret):
+# forwarding_secret_file = "forwarding.secret"
 
 [core]
 # "bridge" (normal) or "spike" (native library self-test).
@@ -155,16 +157,23 @@ class JavaBridgePlugin(Plugin):
         """Read BDS's server.properties online-mode (default false in Endstone). Best-effort."""
         return self._server_properties().get("online-mode", "").lower() == "true"
 
-    def _trusted_proxies(self) -> list:
-        """[bedrock] trusted_proxies from config.toml, as a list of strings."""
+    def _trust(self) -> dict:
+        """Who may forward Bedrock players' XUIDs ([bedrock] in config.toml, then an old
+        xuidforward config.json); see auth/trust_config.py."""
         try:
             raw = tomllib.loads((Path(self.data_folder) / "config.toml").read_text(encoding="utf-8"))
-        except Exception:
-            return []
-        v = raw.get("bedrock", {}).get("trusted_proxies", [])
-        if isinstance(v, str):
-            v = [v]
-        return [str(x).strip() for x in v if str(x).strip()]
+        except Exception:  # noqa: BLE001
+            raw = {}
+        account = str(raw.get("java", {}).get("account_mode", "online")).strip().lower()
+        xf = read_xuidforward_config(Path(self.data_folder).parent)
+        return trust_settings(raw.get("bedrock", {}), xf, java_identity=account in ("online", "hybrid", ""))
+
+    def _xuidforward_plugin(self):
+        """The xuidforward plugin when it is installed too, else None."""
+        try:
+            return self.server.plugin_manager.get_plugin("xuidforward")
+        except Exception:  # noqa: BLE001
+            return None
 
     def _bedrock_target(self, transport: str, port: int) -> str:
         """The core's Bedrock target for this server: "127.0.0.1:<port>" (RakNet), or
@@ -202,16 +211,41 @@ class JavaBridgePlugin(Plugin):
         except Exception as e:  # noqa: BLE001
             self.logger.warning(f"online identity: could not read the trust secret ({e}); online identity off")
             return
-        proxies = self._trusted_proxies()
-        if not secret and not proxies:
+        trust = self._trust()
+        proxies = trust["sources"]
+        claims = None
+        try:
+            key = read_secret(trust["secret"], trust["secret_file"])
+        except Exception as e:  # noqa: BLE001
+            self.logger.error(f"could not read forwarding_secret_file: {e} - trusting proxies by address only")
+            key = b""
+        if key:
+            claims = ClaimVerifier(key, trust["server_name"], trust["window"])
+        if not secret and not proxies and claims is None:
             self.logger.info("account mode is offline: online-identity hook not installed (logins untouched)")
             return
         if not namespace:
             namespace = "a3e78ee7-823a-4cb5-9fe0-532b54ccc20d"  # the relay's and xuidforward's namespace
         hook = IdentityHook(self.logger, Path(__file__).parent, namespace)
         hook.set_proxies(proxies)
-        if proxies:
-            self.logger.info(f"trusted Bedrock proxies: {', '.join(proxies)} - their players keep their Xbox XUID")
+        hook.set_claims(claims)
+        if claims is not None:
+            self.logger.info(f"Bedrock players relayed by Beacon keep their Xbox XUID (Beacon's signed claim; settings from {trust['origin']})")
+        elif proxies:
+            self.logger.info(f"Bedrock players relayed from {', '.join(proxies)} keep their Xbox XUID (settings from {trust['origin']})")
+        xf = self._xuidforward_plugin()
+        if xf is not None and getattr(xf, "_hook_installed", False) and getattr(xf, "_shim", None) is not None:
+            # Both installed and xuidforward hooked BDS first: only one hook can patch BDS, so
+            # Java players get their identity through xuidforward's, and it keeps handling
+            # relayed players by its own config.
+            hook.borrow(xf._shim)
+            hook.set_secret(secret)
+            self.register_events(hook)
+            self._hook = hook
+            self.logger.info("online identity: the xuidforward plugin is installed too and hooked BDS first: it keeps "
+                             "handling relayed Bedrock players, Java players use its hook. Both work; you can remove "
+                             "xuidforward (this plugin reads its config.json).")
+            return
         if not hook.load():
             self.logger.warning("online identity: native hook did not load; Java logins will NOT get a stable XUID "
                                 "and online-mode BDS will refuse them. Use account_mode=offline or add a profile.")
@@ -228,6 +262,9 @@ class JavaBridgePlugin(Plugin):
         self.register_events(hook)
         if hook.install():
             self._hook = hook
+            if xf is not None:
+                self.logger.info("online identity: the xuidforward plugin is installed too: this plugin does its job "
+                                 "now (with its config.json); you can remove xuidforward.")
         else:
             # install() already logged why; a failed install is safe (BDS stays stock).
             self._hook = hook  # keep it registered so set_secret/uninstall stay consistent
