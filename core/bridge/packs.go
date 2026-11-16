@@ -324,7 +324,7 @@ func (p *Player) javaPackFor(conn *minecraft.Conn, gd minecraft.GameData, pal *b
 		}
 		st := res.Stats
 		p.log.Info("converted resource packs", "packs", strings.Join(names, ", "), "sha1", res.SHA1, "bytes", len(res.Zip),
-			"overrides", st.Overrides, "items", st.Items, "blocks", st.Blocks, "entities", st.Entities, "lang", st.LangKeys,
+			"overrides", st.Overrides, "items", st.Items, "armour", st.Equipment, "held3d", st.Held, "blocks", st.Blocks, "entities", st.Entities, "lang", st.LangKeys,
 			"took", b.took.Round(time.Millisecond))
 		for _, m := range st.Missing {
 			p.log.Info("resource pack conversion: not converted", "what", m)
@@ -512,12 +512,28 @@ func (p *Player) packItem(name string, js *jitem.Stack) {
 	if n, ok := res.ItemNames[name]; ok {
 		js.ItemName = itemText(n, true)
 	}
-	if jp := p.packFor(); jp != nil {
+	jp := p.packFor()
+	if jp != nil {
 		if m, ok := res.ItemModels[name]; ok {
 			js.ItemModel = m
 			js.Add(jitem.CompItemModel)
 		}
 	}
+	if eq, ok := res.ItemEquip[name]; ok {
+		// Worn add-on armour: the slot it goes in (Java's armour slots take it) and the equipment
+		// asset that draws it on the body instead of the item on the head.
+		e := &jitem.Equippable{Slot: javaEquipSlot[eq.Slot]}
+		if jp != nil {
+			e.Model = eq.Asset
+		}
+		js.Equippable = e
+		js.Add(jitem.CompEquippable)
+	}
+}
+
+// javaEquipSlot maps javapack's armour slots to Java's equipment slots.
+var javaEquipSlot = map[string]int32{
+	"head": jitem.EquipSlotHead, "chest": jitem.EquipSlotChest, "legs": jitem.EquipSlotLegs, "feet": jitem.EquipSlotFeet,
 }
 
 // The pack HTTP server serves /<sha1>.zip from <pack_dir>/java and nothing else.

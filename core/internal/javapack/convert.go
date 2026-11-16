@@ -17,7 +17,7 @@ import (
 )
 
 // Version changes when the converter's output changes (part of the conversion cache key).
-const Version = 1
+const Version = 2
 
 // Java 26.3's resource pack format (version.json pack_version.resource_major/minor); 26.2 clients
 // (88) are in the range too.
@@ -72,6 +72,7 @@ type Result struct {
 
 	ItemModels map[string]string // custom item id -> item_model
 	ItemNames  map[string]string // custom item id -> display name
+	ItemEquip  map[string]Equip  // wearable custom item id -> slot and equipment asset
 	Blocks     map[string]int    // custom block name -> index in Input.Slots
 	Entities   map[string]Entity // custom entity identifier -> model
 	Lang       map[string]string
@@ -82,6 +83,7 @@ type Result struct {
 // Stats counts what a conversion made.
 type Stats struct {
 	Packs, Overrides, Items, Blocks, Entities, LangKeys int
+	Equipment, Held                                     int      // armour pieces with a layer, 3D held models
 	Missing                                             []string // what could not be converted (first few)
 }
 
@@ -110,6 +112,14 @@ type builder struct {
 	texDone     map[string]texInfo // source path + kind -> Java texture
 	usedSafe    map[string]bool
 	blockStates map[string]map[string]string // Java block -> state key -> model
+
+	attMain   map[string]*attachable   // item -> its attachable
+	attSub    map[string][]*attachable // item -> attachables in subpacks
+	anims     map[string]map[string]animBone
+	equipDone map[string]string // layer|root|path -> equipment texture name
+	equipName map[string]string // root|path -> equipment texture name
+	itemSafe  map[string]string // item -> its models/item and items/ name
+	itemFlat  map[string]bool   // items with a flat icon model
 }
 
 type texInfo struct {
@@ -122,7 +132,8 @@ func Convert(in *Input) (*Result, error) {
 	b := &builder{in: in, files: map[string][]byte{}, lang: map[string]string{},
 		itemTex: map[string]string{}, terrainTex: map[string]string{}, blocksTex: map[string]map[string]string{}, geos: map[string]*geometry{},
 		texDone: map[string]texInfo{}, usedSafe: map[string]bool{}, blockStates: map[string]map[string]string{},
-		res: &Result{ItemModels: map[string]string{}, ItemNames: map[string]string{}, Blocks: map[string]int{},
+		equipDone: map[string]string{}, equipName: map[string]string{}, itemSafe: map[string]string{}, itemFlat: map[string]bool{},
+		res: &Result{ItemModels: map[string]string{}, ItemNames: map[string]string{}, ItemEquip: map[string]Equip{}, Blocks: map[string]int{},
 			Entities: map[string]Entity{}}}
 	b.res.Stats.Packs = len(in.Packs)
 	for _, s := range in.Packs {
@@ -138,7 +149,10 @@ func Convert(in *Input) (*Result, error) {
 		}
 	}
 	b.overrides()
+	b.readAttachables()
 	b.items()
+	b.armor()
+	b.held()
 	b.blocks()
 	b.entities()
 	if len(b.lang) > 0 {
@@ -303,12 +317,15 @@ func (b *builder) safeName(kind, id string) string {
 
 // texture adds the texture at Bedrock path p under assets/javabridge/textures/<dir>/ and returns
 // its Java id ("javabridge:item/example/void_scythe").
-func (b *builder) texture(dir, p string) (texInfo, bool) {
-	key := dir + "|" + strings.ToLower(p)
+func (b *builder) texture(dir, p string) (texInfo, bool) { return b.textureAt(dir, "", p) }
+
+// textureAt is texture for a path looked up in a subpack (root, "subpacks/<name>/") first.
+func (b *builder) textureAt(dir, root, p string) (texInfo, bool) {
+	key := dir + "|" + root + "|" + strings.ToLower(p)
 	if t, ok := b.texDone[key]; ok {
 		return t, true
 	}
-	data, tga, ok := b.findTexture(p)
+	data, tga, ok := b.findTextureIn(root, p)
 	if !ok {
 		// Not in the packs: a vanilla texture the add-on reuses by its Bedrock name
 		// ("nether_star", "book_writable"), which the Java client has under its own name.
@@ -396,6 +413,7 @@ func (b *builder) items() {
 			parent = "minecraft:item/handheld"
 		}
 		safe := b.safeName("item", it.ID)
+		b.itemSafe[it.ID], b.itemFlat[it.ID] = safe, true
 		b.json("assets/"+Namespace+"/models/item/"+safe+".json", map[string]any{
 			"parent": parent, "textures": map[string]any{"layer0": tex.id},
 		})

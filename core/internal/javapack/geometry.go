@@ -189,26 +189,48 @@ func isIdent(m mat3) bool {
 	return true
 }
 
-// affine is v -> r*v + t.
+// affine is v -> s*r*v + t (s 0 means 1: a plain rotation and translation).
 type affine struct {
 	r mat3
 	t [3]float64
+	s float64
+}
+
+func (a affine) sc() float64 {
+	if a.s == 0 {
+		return 1
+	}
+	return a.s
 }
 
 func (a affine) then(b affine) affine { // a after b
 	bt := a.r.apply(b.t)
-	return affine{r: a.r.mul(b.r), t: [3]float64{bt[0] + a.t[0], bt[1] + a.t[1], bt[2] + a.t[2]}}
+	k := a.sc()
+	return affine{r: a.r.mul(b.r), s: k * b.sc(), t: [3]float64{k*bt[0] + a.t[0], k*bt[1] + a.t[1], k*bt[2] + a.t[2]}}
 }
 
 func (a affine) apply(v [3]float64) [3]float64 {
 	w := a.r.apply(v)
-	return [3]float64{w[0] + a.t[0], w[1] + a.t[1], w[2] + a.t[2]}
+	k := a.sc()
+	return [3]float64{k*w[0] + a.t[0], k*w[1] + a.t[1], k*w[2] + a.t[2]}
 }
 
 // rotAbout is a rotation r about point p.
 func rotAbout(p [3]float64, r mat3) affine {
 	rp := r.apply(p)
 	return affine{r: r, t: [3]float64{p[0] - rp[0], p[1] - rp[1], p[2] - rp[2]}}
+}
+
+// scaleAbout is a uniform scale k about point p.
+func scaleAbout(p [3]float64, k float64) affine {
+	return affine{r: ident, s: k, t: [3]float64{p[0] - k*p[0], p[1] - k*p[1], p[2] - k*p[2]}}
+}
+
+// boneAnim is an animation's pose of one bone, Bedrock values: rotation added to the bone's,
+// position offset, uniform scale (0 means 1).
+type boneAnim struct {
+	rot, pos [3]float64
+	scale    float64
 }
 
 // element is a Java model element in Java model space pixels (not yet fitted to -16..32).
@@ -229,7 +251,11 @@ type face struct {
 var faceNames = [6]string{"north", "east", "south", "west", "up", "down"}
 
 // elements converts a geometry's cubes. Bones that are never rendered are left out.
-func (g *geometry) elements() []element {
+func (g *geometry) elements() []element { return g.elementsWith(affine{r: ident}, nil) }
+
+// elementsWith converts a geometry's cubes posed by anim (bone name, lower case -> pose) and then
+// moved by pre (Java model space pixels to the space wanted).
+func (g *geometry) elementsWith(pre affine, anim map[string]boneAnim) []element {
 	byName := map[string]*geoBone{}
 	for i := range g.bones {
 		byName[strings.ToLower(g.bones[i].Name)] = &g.bones[i]
@@ -246,7 +272,21 @@ func (g *geometry) elements() []element {
 			t = boneT(p, depth+1)
 		}
 		piv := [3]float64{-b.Pivot[0], b.Pivot[1], b.Pivot[2]}
-		t = t.then(rotAbout(piv, javaRot(b.Rotation)))
+		a, posed := anim[key]
+		if !posed {
+			t = t.then(rotAbout(piv, javaRot(b.Rotation)))
+			cache[key] = t
+			return t
+		}
+		rot := [3]float64{b.Rotation[0] + a.rot[0], b.Rotation[1] + a.rot[1], b.Rotation[2] + a.rot[2]}
+		local := rotAbout(piv, javaRot(rot))
+		if a.scale != 0 && a.scale != 1 {
+			local = local.then(scaleAbout(piv, a.scale))
+		}
+		if a.pos != ([3]float64{}) {
+			local = affine{r: ident, t: [3]float64{-a.pos[0], a.pos[1], a.pos[2]}}.then(local)
+		}
+		t = t.then(local)
 		cache[key] = t
 		return t
 	}
@@ -256,7 +296,7 @@ func (g *geometry) elements() []element {
 		if b.NeverRender {
 			continue
 		}
-		bt := boneT(b, 0)
+		bt := pre.then(boneT(b, 0))
 		for _, c := range b.Cubes {
 			inf := b.Inflate
 			if c.Inflate != nil {
@@ -282,9 +322,10 @@ func (g *geometry) elements() []element {
 			} else {
 				ctr := [3]float64{(lo[0] + hi[0]) / 2, (lo[1] + hi[1]) / 2, (lo[2] + hi[2]) / 2}
 				o := t.apply(ctr)
-				for k := 0; k < 3; k++ {
-					e.from[k] = lo[k] - ctr[k] + o[k]
-					e.to[k] = hi[k] - ctr[k] + o[k]
+				k := t.sc()
+				for a := 0; a < 3; a++ {
+					e.from[a] = (lo[a]-ctr[a])*k + o[a]
+					e.to[a] = (hi[a]-ctr[a])*k + o[a]
 				}
 				e.rotated, e.origin = true, o
 				e.rx, e.ry, e.rz = eulerZYX(t.r)
