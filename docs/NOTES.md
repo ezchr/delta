@@ -470,6 +470,31 @@ mob of that type is first shown, for its parts' bones only.
   player's range). Whether the server then also despawns it, which would explain "No targets
   matched" on flat, was not checked.
 
+## Custom mobs: hurt flash, hit sound, name on aim
+
+What a Java client does by itself for a living mob, and cannot for one drawn with item displays
+(`bridge/entities_modelfx.go`; `TestModelFx`). None of the three was seen in a real client yet.
+
+- **Red flash.** Every entity model face has `tintindex: 0`, and the item definitions (the whole
+  mob's, and each `range_dispatch` entry of the parts) have `tints: [{type:
+  minecraft:custom_model_data, index: 0, default: 16777215}]`. On ActorEvent Hurt the bridge
+  sends every display of the mob its item again with the custom model data colour `0xFF5A5A`,
+  and the plain item 10 ticks later (one packet per display each time, in a bundle). A tint
+  multiplies the texture, Java's hurt overlay mixes red in: close, not the same. The pack does
+  not grow (29.45 MB at `anim_parts = "all"`, as before) and `checkpack.py` has no complaint.
+- **Hit sound.** A custom mob's level sounds (`hurt`, `death`, `ambient`, `step`, `spawn`...) name
+  sounds of the Bedrock pack, and the converter does not take sounds over: the Cobblemon pack
+  is 2.4 GB of them. So `hurt` and `death` of a custom entity type play `entity.generic.hurt`
+  and `entity.generic.death` at the mob; its other events stay silent (and are still logged as
+  untranslated). Converting a pack's entity sounds would be the real fix, at the pack's size.
+- **Name on aim.** A display entity draws no name tag and the client's look-at name is for
+  living entities. Every second tick the bridge casts the player's view ray against the custom
+  mobs' boxes (8 blocks, `aimNameRange`: chosen, Bedrock's own distance was not measured) and
+  shows the first line of the name of the one it hits on a text display that rides the mob's
+  hitbox; it is removed when the player looks away. Names the server always shows are left as
+  they were (entity data of the mob's display, which a display may not draw at all: not
+  checked).
+
 ## Leads
 
 - **BDS tells what holds a lead with actor data `LEASH_HOLDER`** (key 37, int64): the holder's
