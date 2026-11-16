@@ -16,13 +16,10 @@ type Library struct {
 	mu    sync.Mutex
 	index map[string]string // animation or controller id -> file
 	files map[string]*libFile
-	// cache is the files parsed last.
-	cache [3]struct {
-		name  string
-		items map[string]json.RawMessage
-	}
-	next int
 }
+
+// parsed is the files one compile has parsed: file -> id -> JSON.
+type parsed map[string]map[string]json.RawMessage
 
 type libFile struct {
 	raw  []byte // as added (dropped by Compact)
@@ -91,54 +88,49 @@ func (l *Library) Has(id string) bool {
 	return ok
 }
 
-// get is the JSON of an animation or controller.
-func (l *Library) get(id string) (json.RawMessage, bool) {
+// get is the JSON of an animation or controller. Files are parsed into cache, once per caller
+// (a compile), outside the library's lock.
+func (l *Library) get(id string, cache parsed) (json.RawMessage, bool) {
 	if l == nil {
 		return nil, false
 	}
 	l.mu.Lock()
-	defer l.mu.Unlock()
 	name, ok := l.index[id]
-	if !ok {
-		return nil, false
-	}
-	for i := range l.cache {
-		if l.cache[i].name == name && l.cache[i].items != nil {
-			r, ok := l.cache[i].items[id]
-			return r, ok
-		}
-	}
 	f := l.files[name]
-	if f == nil {
+	var raw, z []byte
+	if f != nil {
+		f.used = true
+		raw, z = f.raw, f.z
+	}
+	l.mu.Unlock()
+	if !ok || f == nil {
 		return nil, false
 	}
-	f.used = true
-	data := f.raw
-	if data == nil {
-		b, err := io.ReadAll(io.LimitReader(flate.NewReader(bytes.NewReader(f.z)), 64<<20))
-		if err != nil {
-			return nil, false
+	items, done := cache[name]
+	if !done {
+		if raw == nil {
+			b, err := io.ReadAll(io.LimitReader(flate.NewReader(bytes.NewReader(z)), 64<<20))
+			if err != nil {
+				return nil, false
+			}
+			raw = b
 		}
-		data = b
-	}
-	var top struct {
-		A map[string]json.RawMessage `json:"animations"`
-		C map[string]json.RawMessage `json:"animation_controllers"`
-	}
-	if json.Unmarshal(data, &top) != nil {
-		return nil, false
-	}
-	items := top.A
-	if items == nil {
-		items = top.C
-	} else {
-		for k, v := range top.C {
-			items[k] = v
+		var top struct {
+			A map[string]json.RawMessage `json:"animations"`
+			C map[string]json.RawMessage `json:"animation_controllers"`
 		}
+		if json.Unmarshal(raw, &top) == nil {
+			items = top.A
+			if items == nil {
+				items = top.C
+			} else {
+				for k, v := range top.C {
+					items[k] = v
+				}
+			}
+		}
+		cache[name] = items
 	}
-	c := &l.cache[l.next%len(l.cache)]
-	l.next++
-	c.name, c.items = name, items
 	r, ok := items[id]
 	return r, ok
 }
@@ -166,9 +158,6 @@ func (l *Library) Compact() int {
 		if l.files[name] == nil {
 			delete(l.index, id)
 		}
-	}
-	for i := range l.cache {
-		l.cache[i].name, l.cache[i].items = "", nil
 	}
 	return total
 }

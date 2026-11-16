@@ -13,6 +13,7 @@ import (
 	"github.com/ezchr/go-mcjava/wire"
 	"github.com/go-gl/mathgl/mgl64"
 	"github.com/sandertv/gophertunnel/minecraft/protocol"
+	"github.com/sandertv/gophertunnel/minecraft/protocol/packet"
 )
 
 // Animated custom mobs (entities_custom.go shows them; internal/anim evaluates the pack's
@@ -68,6 +69,29 @@ const (
 // controllers play; animOff (animations = "off") shows every custom mob as its static model.
 var debugAnim, animOff bool
 
+// One-shot animations (attacks, hurt, cries). What starts them, and what the bridge has of it:
+//
+//   - an actor property or flag a controller's transition tests (the Cobblemon port plays its
+//     attack clips on the property cobblemon:primary): nothing to do, the controllers run on
+//     the actor's properties and flags;
+//   - AnimateEntity, a script's playAnimation: the server names the animation and the actors;
+//     it is played once on top of what the scripts play (anim.State.Play), by id or by the
+//     entity file's short name, fading out over the packet's blend-out time;
+//   - ActorEvent StartAttacking (a mob's arm swing): v.attack_time runs from 0 to 1 over
+//     attackSwingTicks, as on a Bedrock client, and q.is_attacking holds meanwhile; the flag
+//     behind q.is_delayed_attacking is entity data;
+//   - ActorEvent Hurt: q.hurt_time counts down from hurtTicks; Death: q.is_alive is 0 (a dead
+//     mob keeps its displays, so a faint animation can play).
+//
+// AnimateEntity's stop expression ends its animation (the default, "the animation finished",
+// is once through, also for a looping animation). Not supported: its next state and controller
+// name (the animation always returns to what the scripts play), and what a client works out by
+// itself with no packet (q.is_jumping, the swing of a held item).
+const (
+	attackSwingTicks = 6
+	hurtTicks        = 10
+)
+
 // animPart is one part display of an animated mob.
 type animPart struct {
 	id      int32
@@ -84,12 +108,15 @@ type modelAnim struct {
 	period   int
 	lastStep uint64
 	// Movement since the last step, for the speed queries.
-	lastPos  [3]float64
-	hasPos   bool
-	pitch    float32 // the head pitch Bedrock sent (the display itself is kept level)
-	sentYaw  byte
-	playing  string
-	distance float64 // to the player, at the last ranking
+	lastPos [3]float64
+	hasPos  bool
+	pitch   float32 // the head pitch Bedrock sent (the display itself is kept level)
+	sentYaw byte
+	// attackAt and hurtAt are the animation ticks of the mob's last attack and hurt events
+	// (0: none).
+	attackAt, hurtAt uint64
+	playing          string
+	distance         float64 // to the player, at the last ranking
 	// Line of sight: the last test's tick (0: never tested), its result with the hysteresis
 	// applied, and the tests failed in a row.
 	sightAt uint64
@@ -180,6 +207,14 @@ func (p *Player) animInputs(e *entity, a *modelAnim, dt float64) {
 		in.SkinID = float64(v)
 	}
 	in.Health = float64(e.health)
+	now := p.packs.animTicks
+	in.AttackTime, in.HurtTime = 0, 0
+	if a.attackAt != 0 && now-a.attackAt < attackSwingTicks {
+		in.AttackTime = float64(now-a.attackAt+1) / attackSwingTicks
+	}
+	if a.hurtAt != 0 && now-a.hurtAt < hurtTicks {
+		in.HurtTime = float64(hurtTicks - (now - a.hurtAt))
+	}
 	if in.Flag == nil {
 		in.Flag = func(q molang.Query) bool {
 			switch q {
@@ -266,7 +301,7 @@ func (p *Player) animRank() {
 		if a.parts != nil {
 			limit = animRangeOut
 		}
-		if a.distance > limit || e.dead {
+		if a.distance > limit {
 			if a.parts != nil {
 				p.animStop(e, me)
 			}
@@ -426,7 +461,11 @@ func (p *Player) animStep(e *entity, me *modelEntity, dt float64) {
 	me.script = float32(a.st.Scale())
 	scale := me.scale * me.script
 	if debugAnim {
-		if s := a.st.Playing(); s != a.playing {
+		s := a.st.Playing()
+		if o := a.st.Overlaid(); o != "" {
+			s += " + " + o
+		}
+		if s != a.playing {
 			a.playing = s
 			p.log.Info("anim", "type", e.bedrock, "id", e.id, "playing", s, "speed", math.Round(a.st.In.GroundSpeed*10)/10,
 				"ground", a.st.In.OnGround, "water", a.st.In.InWater)
@@ -532,6 +571,31 @@ func writeIntData(w *wire.Writer, index byte, v int32) {
 
 func init() {
 	OnTick((*Player).animTick)
+	OnBedrock(packet.IDAnimateEntity, func(p *Player, pk *packet.AnimateEntity) {
+		for _, rid := range pk.EntityRuntimeIDs {
+			me := p.packs.ents[rid]
+			if me == nil || me.anim == nil {
+				continue
+			}
+			ok := me.anim.model.Play(me.anim.st, pk.Animation, float64(pk.BlendOutTime), pk.StopCondition)
+			if debugAnim {
+				p.log.Info("anim play", "rid", rid, "animation", pk.Animation, "found", ok, "controller", pk.Controller, "next", pk.NextState,
+					"stop", pk.StopCondition, "blend_out", pk.BlendOutTime)
+			}
+		}
+	})
+	OnBedrock(packet.IDActorEvent, func(p *Player, pk *packet.ActorEvent) {
+		me := p.packs.ents[pk.EntityRuntimeID]
+		if me == nil || me.anim == nil {
+			return
+		}
+		switch pk.EventType {
+		case packet.ActorEventStartAttacking:
+			me.anim.attackAt = max(p.packs.animTicks, 1)
+		case packet.ActorEventHurt:
+			me.anim.hurtAt = max(p.packs.animTicks, 1)
+		}
+	})
 }
 
 // animSees reports whether the player can see a mob, well enough to spend an animation slot on

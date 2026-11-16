@@ -167,12 +167,42 @@ with cubes is scored by how far its cubes move against its parent (pixels, times
 of its size). Bones that do not move at all are merged into their parent for free; then, while
 there are more than `anim.MaxParts` (24) groups, the lowest score is merged, a left bone
 together with its right twin (or a mob limps). A merged bone keeps its reference-pose place on
-its parent. Consequences: a bone that only moves in an animation none of the eight situations
-plays (an attack, a one-shot quirk) is frozen; Charizard (130 bones, 81 with moving cubes)
+its parent. The animations no situation plays (attacks and other one-shots: next paragraph) are
+sampled too, up to 24 of them at 4 poses each, laid over the idle pose in place of it on the
+bones they move; their movement counts 0.6 of a situation's. Charizard (130 bones, 81 with moving cubes)
 keeps torso, one neck part, head, 2x2 arm parts, 2x4 wing parts, 4 tail parts, the flame and
 2x2 leg parts, and loses fingers, jaw, tongue, claws, eyelids and one joint each of neck, tail
 and feet. Where that shows: asleep, its curled tail has one segment sticking out; flying, the
 tail's end is a little off. Raising `anim.MaxParts` trades that against packets and entities.
+
+**One-shots (attacks, cries, hurt).** What starts one on Bedrock, and what the bridge does:
+
+- A controller transition on an actor property or flag. The Cobblemon port plays its attack
+  clips this way: a script sets the property `cobblemon:primary` (1 to 8), `pre_animation` turns
+  it into `v.primary`/`v.primary_w` with a timer on `q.delta_time`, and the `primary` controller
+  crossfades the clip against the pose animation. Nothing special is needed: properties and
+  flags are inputs of the running state. `animpreview 'cobblemon:p0006_charizard=idle+cobblemon:primary=6@0.6,1.2,1.8'`
+  shows the lunge (sheet `..._idle_primary6.png`).
+- `AnimateEntity` (a script's `playAnimation`, `/playanimation`): animation id, actors, blend-out
+  time, stop expression. It is played on top of what the scripts play (`anim.State.Play`):
+  once through (also a looping animation: the packet's default stop expression is
+  `query.any_animation_finished`), or until the packet's own stop expression holds. An animation
+  the entity file does not list is compiled from the kept files when first asked for. The
+  packet's controller and next state are ignored. Cobblemon uses it for cries and for
+  `animation.cobblemon.trainer_throw`/`_recall`.
+- `ActorEvent` StartAttacking (a mob's arm swing): `v.attack_time` runs 0 to 1 over 6 ticks and
+  `q.is_attacking` holds; Hurt: `q.hurt_time` counts down from 10; Death: `q.is_alive` is 0, and
+  a dead mob keeps its displays so a faint animation can play. `q.is_delayed_attacking` is an
+  entity flag. None of the test world's packs keys an animation on these (the NPC expansion
+  pack's scripts read `variable.attack_time`, with vanilla animations that are not in the pack),
+  so they are covered by `TestAnimOneShots` only.
+- Not possible: what a Bedrock client works out with no packet (`q.is_jumping`, item use swing).
+  And `math.random(0, N) < 1` per frame (Cobblemon's blinks and idle quirks) fires 3 to 9 times
+  less often, because the bridge steps a mob 7 or 3 times a second, not 60.
+- A one-shot on a mob that has no animation slot (too far, not in sight) is not shown.
+- Live: `/root/jbtest/oneshotlive.sh` plays `animation.charizard.cry` with `/playanimation`:
+  `anim play ... found=true`, the state line shows `+ animation.charizard.cry` for its length;
+  an animation of another mob is compiled and played; an unknown one is `found=false`.
 
 **Budget (`bridge/entities_anim.go`).** Per player: the 6 nearest animated mobs are stepped
 every 3 ticks, the next 10 every 6 ticks, each with its interpolation duration set to that; a

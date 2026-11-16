@@ -62,12 +62,21 @@ type Rig struct {
 	animate []animRef
 	ctrls   []*controller
 	slots   int
+	// byID are the animations of the entity file's list, by id and by short name: the ones
+	// controllers play and the ones only a server's AnimateEntity or nothing asks for.
+	byID map[string]*animation
+	// all are the same animations, in the order of their short names.
+	all []*animation
+	// bones is the bone index by lower-case name; attack is the slot of v.attack_time.
+	bones  map[string]int
+	attack int
 }
 
 // Compile makes a rig. need lists the bones whose pose will be read (nil: all); they and their
 // parents are evaluated, animations of other bones are dropped.
 func Compile(src *Source, lib *Library, need []int) *Rig {
-	r := &Rig{syms: molang.NewSymbols()}
+	r := &Rig{syms: molang.NewSymbols(), byID: map[string]*animation{}}
+	files := parsed{}
 	c := &compiler{syms: r.syms, notes: map[string]bool{}}
 	byName := map[string]int{}
 	for i, b := range src.Bones {
@@ -149,7 +158,7 @@ func Compile(src *Source, lib *Library, need []int) *Rig {
 		}
 		an, done := anims[id]
 		if !done {
-			if raw, ok := lib.get(id); ok && len(anims) < maxAnimations {
+			if raw, ok := lib.get(id, files); ok && len(anims) < maxAnimations {
 				an = c.animation(id, raw, byName, r.need)
 			} else {
 				c.note("animation " + id + " is not in the packs")
@@ -168,7 +177,7 @@ func Compile(src *Source, lib *Library, need []int) *Rig {
 			return ct
 		}
 		ctrls[id] = nil
-		raw, ok := lib.get(id)
+		raw, ok := lib.get(id, files)
 		var rc rawController
 		if !ok || len(r.ctrls) >= maxControllers || json.Unmarshal(raw, &rc) != nil || len(rc.States) == 0 {
 			c.note("controller " + id + " is not in the packs")
@@ -229,11 +238,52 @@ func Compile(src *Source, lib *Library, need []int) *Rig {
 			}
 		}
 	}
+	// The rest of the entity's animations: nothing above plays them, a server may
+	// (AnimateEntity), and the plan looks at them (a bone that only moves in one of them should
+	// not be frozen for good).
+	names := make([]string, 0, len(src.Animations))
+	for n := range src.Animations {
+		names = append(names, n)
+	}
+	sort.Strings(names)
+	for _, n := range names {
+		id := src.Animations[n]
+		if strings.HasPrefix(id, "controller.") {
+			continue
+		}
+		an, done := anims[id]
+		if !done && len(anims) < maxAnimations {
+			if raw, ok := lib.get(id, files); ok {
+				an = c.animation(id, raw, byName, r.need)
+			}
+			anims[id] = an
+		}
+		if an != nil && r.byID[id] == nil {
+			r.byID[id], r.byID[n] = an, an
+			r.all = append(r.all, an)
+		}
+	}
+	r.bones = byName
+	r.attack = r.syms.Var("attack_time")
 	for n := range c.notes {
 		r.Notes = append(r.Notes, n)
 	}
 	sort.Strings(r.Notes)
 	return r
+}
+
+// animationFor is an animation by id or short name: one of the rig's, or compiled now from
+// lib (an animation the entity file does not list, which a server can still ask for).
+func (r *Rig) animationFor(id string, lib *Library) *animation {
+	if an := r.byID[id]; an != nil {
+		return an
+	}
+	raw, ok := lib.get(id, parsed{})
+	if !ok {
+		return nil
+	}
+	c := &compiler{syms: r.syms, notes: map[string]bool{}}
+	return c.animation(id, raw, r.bones, r.need)
 }
 
 // Animated reports whether the rig plays anything at all.
@@ -244,6 +294,9 @@ type Inputs struct {
 	OnGround, InWater bool
 	// GroundSpeed and VerticalSpeed are in blocks per second.
 	GroundSpeed, VerticalSpeed float64
+	// AttackTime is how far the mob's attack swing is, 0 to 1 (v.attack_time; 0: none);
+	// HurtTime the ticks left of its being hurt (q.hurt_time, from 10).
+	AttackTime, HurtTime float64
 	// HeadYaw (relative to the body) and HeadPitch, degrees.
 	HeadYaw, HeadPitch float64
 	BodyYaw            float64
@@ -272,7 +325,29 @@ type State struct {
 	// cur is the controller state whose transitions are being evaluated (for
 	// q.all_animations_finished).
 	cur *cstate
+	// over are the animations playing on top of what the scripts play (Play).
+	over []overlay
+	// used marks the animations that were applied with a weight, for the plan (nil: not kept).
+	used map[*animation]bool
 }
+
+// overlay is an animation played once on top of the rest: a server's AnimateEntity, or a pose
+// the plan looks at.
+type overlay struct {
+	an       *animation
+	t        float64
+	blendOut float64
+	frozen   bool // t does not advance (the plan samples it)
+	done     bool
+	// stop ends it when it holds; nil: when it has played through once.
+	stop *molang.Expr
+}
+
+// overlayBlendIn is how long an overlay takes to reach full weight.
+const overlayBlendIn = 0.1
+
+// maxOverlayTime ends a looping overlay nothing stopped.
+const maxOverlayTime = 30.0
 
 type ctrlState struct {
 	started   bool
@@ -334,6 +409,10 @@ func (s *State) Query(q molang.Query, args []float64) float64 {
 		return in.MaxHealth
 	case molang.QTimeOfDay:
 		return in.TimeOfDay
+	case molang.QHurtTime:
+		return in.HurtTime
+	case molang.QIsAttacking:
+		return b2f(in.AttackTime > 0)
 	case molang.QIsAlive:
 		if in.Flag != nil {
 			return b2f(in.Flag(q))
@@ -401,6 +480,7 @@ func (s *State) Step(dt float64) {
 		s.env.LifeTime += dt
 	}
 	s.swing += swingSpeed(s.In.GroundSpeed) * 20 * dt
+	s.env.Set(r.attack, s.In.AttackTime)
 	for _, x := range r.pre {
 		x.Eval(s.env)
 	}
@@ -410,6 +490,7 @@ func (s *State) Step(dt float64) {
 	for i := range r.animate {
 		s.play(&r.animate[i], 1)
 	}
+	s.overlays()
 	for _, i := range r.order {
 		b := &r.Bones[i]
 		a := &s.acc[i]
@@ -507,31 +588,10 @@ func (s *State) apply(an *animation, slot int, w float64) {
 		w *= an.weight.Eval(s.env)
 	}
 	if w != 0 && !(s.done[slot] && an.loop == loopOnce) {
-		for i := range an.tracks {
-			tr := &an.tracks[i]
-			a := &s.acc[tr.bone]
-			if an.override {
-				*a = boneAcc{scale: [3]float64{1, 1, 1}}
-			}
-			if tr.rot != nil {
-				v := tr.rot.sample(t, s.env)
-				a.rot[0] += w * v[0]
-				a.rot[1] += w * v[1]
-				a.rot[2] += w * v[2]
-			}
-			if tr.pos != nil {
-				v := tr.pos.sample(t, s.env)
-				a.pos[0] += w * v[0]
-				a.pos[1] += w * v[1]
-				a.pos[2] += w * v[2]
-			}
-			if tr.scale != nil {
-				v := tr.scale.sample(t, s.env)
-				for k := 0; k < 3; k++ {
-					a.scale[k] *= 1 + (v[k]-1)*w
-				}
-			}
+		if s.used != nil {
+			s.used[an] = true
 		}
+		s.add(an, t, w)
 	}
 	if an.update != nil {
 		t = an.update.Eval(s.env)
@@ -550,6 +610,118 @@ func (s *State) apply(an *animation, slot int, w float64) {
 		t = 0
 	}
 	s.times[slot] = t
+}
+
+// add adds an animation's pose at time t with weight w to the bones.
+func (s *State) add(an *animation, t, w float64) {
+	s.env.AnimTime = t
+	for i := range an.tracks {
+		tr := &an.tracks[i]
+		a := &s.acc[tr.bone]
+		if an.override {
+			*a = boneAcc{scale: [3]float64{1, 1, 1}}
+		}
+		if tr.rot != nil {
+			v := tr.rot.sample(t, s.env)
+			a.rot[0] += w * v[0]
+			a.rot[1] += w * v[1]
+			a.rot[2] += w * v[2]
+		}
+		if tr.pos != nil {
+			v := tr.pos.sample(t, s.env)
+			a.pos[0] += w * v[0]
+			a.pos[1] += w * v[1]
+			a.pos[2] += w * v[2]
+		}
+		if tr.scale != nil {
+			v := tr.scale.sample(t, s.env)
+			for k := 0; k < 3; k++ {
+				a.scale[k] *= 1 + (v[k]-1)*w
+			}
+		}
+	}
+}
+
+// overlays applies the animations playing on top and advances them.
+func (s *State) overlays() {
+	live := s.over[:0]
+	for _, o := range s.over {
+		an := o.an
+		w := 1.0
+		if !o.frozen {
+			w = min(1, (o.t+s.dt)/overlayBlendIn)
+			if end := an.length; end > 0 && (an.loop != loopLoop || o.stop == nil) && o.blendOut > 0 {
+				w = min(w, max(0, (end-o.t)/o.blendOut))
+			}
+			if o.done {
+				w = 0
+			}
+		}
+		t := o.t
+		if an.loop == loopLoop && an.length > 0 {
+			t = math.Mod(t, an.length)
+		} else if an.length > 0 {
+			t = min(t, an.length)
+		}
+		if w > 0 {
+			s.add(an, t, w)
+		}
+		if !o.frozen {
+			o.t += s.dt
+			over := an.length > 0 && o.t >= an.length
+			if o.stop != nil {
+				// Its own stop condition; a looping animation goes on until it holds.
+				s.env.AnimTime = o.t
+				over = (over && an.loop != loopLoop) || o.stop.Eval(s.env) != 0
+			}
+			if over || o.t > maxOverlayTime || o.done {
+				continue // played: what the scripts play is all there is again
+			}
+		}
+		live = append(live, o)
+	}
+	s.over = live
+}
+
+// Play plays an animation once on top of what the scripts play: by id or by the entity file's
+// short name. blendOut is the seconds it fades out over at its end. stop is the Molang that
+// ends it; "" and the usual "the animation finished" (what a plain /playanimation sends) mean
+// once through, also for a looping animation; with another condition a looping animation plays
+// until it holds, or until another animation is played. It reports whether there is such an
+// animation.
+func (s *State) Play(id string, blendOut float64, stop string, lib *Library) bool {
+	an := s.rig.animationFor(id, lib)
+	if an == nil {
+		return false
+	}
+	var cond *molang.Expr
+	if st := strings.ToLower(strings.TrimSpace(stop)); st != "" && !strings.HasSuffix(st, "_animation_finished") && !strings.HasSuffix(st, "_animations_finished") {
+		if x, err := molang.Compile(stop, s.rig.syms); err == nil && x.Known() {
+			cond = x
+		}
+	}
+	for i := range s.over {
+		if s.over[i].an.loop == loopLoop || s.over[i].an == an {
+			s.over[i].done = true // one looping overlay at a time, and no animation twice
+		}
+	}
+	if len(s.over) >= 4 {
+		s.over = s.over[1:]
+	}
+	s.over = append(s.over, overlay{an: an, blendOut: max(0, min(blendOut, 5)), stop: cond})
+	return true
+}
+
+// Overlaid names the animations playing on top, for logs.
+func (s *State) Overlaid() string {
+	var b strings.Builder
+	for _, o := range s.over {
+		if b.Len() > 0 {
+			b.WriteByte(' ')
+		}
+		b.WriteString(o.an.id)
+	}
+	return b.String()
 }
 
 // Scale is the entity file's scripts.scale for the entity now (1 when there is none or it

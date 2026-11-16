@@ -342,9 +342,10 @@ func TestPlan(t *testing.T) {
 		}
 		return parts
 	}
-	// Room for everything: every bone that moves in a sampled pose has its part. The hat never
-	// moves on the head; the body and the arm only move in animations no sampled situation
-	// plays (a one-shot fall, a wave on a property), so they are on the model's root.
+	// Room for everything: every bone that moves in a sampled pose has its part, the arm too,
+	// which only moves in an animation no situation plays (a wave on a property: sampled as a
+	// one-shot). The hat never moves on the head, and the body only tilts in a fall that is
+	// over by the time the air situation is sampled: it is on the model's root.
 	all := check(100)
 	for _, name := range []string{"head", "leg_left", "leg_right", "feather0", "feather19"} {
 		if _, ok := all[index(name)]; !ok {
@@ -354,8 +355,11 @@ func TestPlan(t *testing.T) {
 	if _, ok := all[index("hat")]; ok {
 		t.Error("the hat, which never moves, has a part of its own")
 	}
-	if m := all[-1]; len(m) != 2 {
-		t.Errorf("the root part draws %v, want body and arm", m)
+	if m := all[-1]; len(m) != 1 {
+		t.Errorf("the root part draws %v, want the body", m)
+	}
+	if _, ok := all[index("arm")]; !ok {
+		t.Error("the arm, which waves in a one-shot, has no part")
 	}
 	if m := all[index("head")]; len(m) != 2 {
 		t.Errorf("the head's part draws %v, want head and hat", m)
@@ -437,4 +441,81 @@ func TestGarbage(t *testing.T) {
 	src := walker()
 	src.Bones[0].Parent = "hat"
 	Compile(src, testLib(walkerAnims, walkerCtrl), nil).NewState(1).Step(0.1)
+}
+
+// TestPlay: an animation played on top (a server's AnimateEntity) runs once over the base
+// animation and is gone; one the entity file does not list is compiled when asked for.
+func TestPlay(t *testing.T) {
+	lib := testLib(walkerAnims+`, "animation.t.bow": {"animation_length": 0.5, "bones": {"body": {"rotation": {"0.0": [0, 0, 0], "0.25": [40, 0, 0], "0.5": [0, 0, 0]}}}}`, walkerCtrl)
+	rig := Compile(walker(), lib, nil)
+	st := rig.NewState(1)
+	st.In = Inputs{OnGround: true}
+	body := func() float64 { r, _, _ := st.Local(1); return r[0] }
+	head := func() float64 { r, _, _ := st.Local(2); return r[0] }
+	st.Step(0.05)
+	if st.Play("animation.t.nothing", 0, "", lib) {
+		t.Fatal("played an animation that does not exist")
+	}
+	if !st.Play("animation.t.bow", 0.1, "query.any_animation_finished", lib) {
+		t.Fatal("an animation of the packs that the entity does not list was not played")
+	}
+	peak := 0.0
+	for i := 0; i < 9; i++ {
+		st.Step(0.05)
+		peak = max(peak, body())
+		if i == 4 && (body() < 30 || st.Overlaid() != "animation.t.bow") {
+			t.Fatalf("mid bow: body %v, playing %q", body(), st.Overlaid())
+		}
+	}
+	if peak < 39 {
+		t.Fatalf("the bow peaked at %v", peak)
+	}
+	st.Step(0.05)
+	st.Step(0.05)
+	if math.Abs(body()) > 1e-9 || st.Overlaid() != "" {
+		t.Fatalf("after the bow: body %v, playing %q", body(), st.Overlaid())
+	}
+	if head() == 0 {
+		t.Fatal("the idle animation stopped under the bow")
+	}
+	// By short name; played again while it plays, it starts over rather than twice.
+	st.Play("wave", 0, "", lib)
+	st.Step(0.05)
+	st.Step(0.05)
+	st.Play("wave", 0, "", lib)
+	st.Step(0.05)
+	st.Step(0.05)
+	if r, _, _ := st.Local(4); r[2] <= 0 || r[2] > 30 {
+		t.Fatalf("arm %v right after the wave was played again", r)
+	}
+	// A looping animation: once through by default, until its stop condition holds otherwise.
+	legs := func() float64 { r, _, _ := st.Local(5); return r[0] }
+	st.Play("walk", 0, "", lib)
+	for i := 0; i < 25; i++ {
+		st.Step(0.05)
+	}
+	if legs() != 0 || st.Overlaid() != "" {
+		t.Fatalf("a looping animation played once: legs %v, playing %q", legs(), st.Overlaid())
+	}
+	st.Play("walk", 0, "q.is_in_water", lib)
+	for i := 0; i < 50; i++ {
+		st.Step(0.05)
+	}
+	if st.Overlaid() == "" {
+		t.Fatal("a looping animation with a stop condition ended before it held")
+	}
+	st.In.InWater = true
+	st.Step(0.05)
+	st.Step(0.05)
+	if st.Overlaid() != "" {
+		t.Fatal("the stop condition did not end the animation")
+	}
+	st.In.InWater = false
+	// v.attack_time and q.hurt_time come from the inputs.
+	x, _ := molang.Compile("v.attack_time * 10 + q.hurt_time", rig.syms)
+	st.In.AttackTime, st.In.HurtTime = 0.5, 3
+	st.Step(0.05)
+	if v := x.Eval(st.env); v != 8 {
+		t.Fatalf("attack and hurt time: %v", v)
+	}
 }

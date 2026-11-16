@@ -27,6 +27,8 @@ type Plan struct {
 	// Moving is the number of bones with cubes that move against their parent in any sampled
 	// pose (before merging).
 	Moving int
+	// Extras is the number of animations sampled that no situation plays (one-shots).
+	Extras int
 }
 
 // presets are the situations whose poses decide which bones need a display of their own. The
@@ -51,6 +53,14 @@ const (
 	mergeFree = 0.05
 	// tiny is the scale below which a bone is not there (packs hide bones by scaling them to 0).
 	tiny = 1e-4
+	// The animations no sampled situation plays (attacks and other one-shots, played on a
+	// property, a variable or by the server) are sampled too, on top of the idle pose: up to
+	// maxExtraAnims of them, extraSamples poses each. Their movement counts extraWeight of a
+	// situation's: an attack should be visible, but a mob walks and breathes far more often
+	// than it attacks.
+	maxExtraAnims = 24
+	extraSamples  = 4
+	extraWeight   = 0.6
 )
 
 // Box is the bounds of a bone's cubes.
@@ -85,9 +95,11 @@ func MakePlan(rig *Rig, boxes []Box, maxParts int) *Plan {
 	nb := len(rig.Bones)
 	// Sample poses.
 	var poses [][]Xform
+	used := map[*animation]bool{}
 	for pi, in := range presets {
 		st := rig.NewState(1)
 		st.In = in
+		st.used = used
 		for i := 0; i < presetSettle; i++ {
 			st.Step(settleStep)
 		}
@@ -108,7 +120,46 @@ func MakePlan(rig *Rig, boxes []Box, maxParts int) *Plan {
 			break
 		}
 	}
-	plan := &Plan{Ref: poses[0][:nb]}
+	nBase := len(poses)
+	if rig.Animated() {
+		// One state, settled as the reference pose is; each one-shot is laid over it.
+		st := rig.NewState(1)
+		st.In = presets[0]
+		for i := 0; i < presetSettle; i++ {
+			st.Step(settleStep)
+		}
+		extras := make([]*animation, 0, len(rig.all))
+		for _, an := range rig.all {
+			if !used[an] && len(an.tracks) > 0 {
+				extras = append(extras, an)
+			}
+		}
+		// Those that end first: they are the ones played once.
+		sort.SliceStable(extras, func(a, b int) bool { return extras[a].loop != loopLoop && extras[b].loop == loopLoop })
+		if len(extras) > maxExtraAnims {
+			extras = extras[:maxExtraAnims]
+		}
+		for _, an := range extras {
+			length := an.length
+			if length <= 0 {
+				length = 2
+			}
+			// It takes the place of the idle pose on the bones it moves (packs fade the idle
+			// animation out while a one-shot plays), instead of adding to it.
+			override := an.override
+			an.override = true
+			for j := 0; j < extraSamples; j++ {
+				st.over = []overlay{{an: an, t: (float64(j) + 0.5) / extraSamples * length, frozen: true}}
+				st.Step(0)
+				g := make([]Xform, nb+1)
+				copy(g, st.glob)
+				g[nb] = IdentX
+				poses = append(poses, g)
+			}
+			an.override = override
+		}
+	}
+	plan := &Plan{Ref: poses[0][:nb], Extras: (len(poses) - nBase) / extraSamples}
 	// shown[i] is the first pose that shows bone i (-1: none): the pose its part is built in.
 	shown := make([]int, nb+1)
 	for i := 0; i < nb; i++ {
@@ -147,7 +198,8 @@ func MakePlan(rig *Rig, boxes []Box, maxParts int) *Plan {
 	}
 	rel := func(k, parent, child int) (Xform, bool) { return Rel(poses[k][parent], poses[k][child]) }
 	// cost is how far a group's cubes move against its parent group over the sampled poses: the
-	// longest way one of its corners goes (the size of the box around its positions), in pixels.
+	// longest way one of its corners goes (the size of the box around its positions), in pixels;
+	// over the situations' poses, or extraWeight of that over all poses when that is more.
 	cost := func(i int) float64 {
 		g := &groups[i]
 		var lo, hi [8][3]float64
@@ -155,29 +207,40 @@ func MakePlan(rig *Rig, boxes []Box, maxParts int) *Plan {
 			lo[c] = [3]float64{math.Inf(1), math.Inf(1), math.Inf(1)}
 			hi[c] = [3]float64{math.Inf(-1), math.Inf(-1), math.Inf(-1)}
 		}
-		seen := false
+		var corners [8][3]float64
+		for c := range corners {
+			corners[c] = corner(g.lo, g.hi, c)
+		}
+		worst := func() float64 {
+			w := 0.0
+			for c := range lo {
+				d := [3]float64{hi[c][0] - lo[c][0], hi[c][1] - lo[c][1], hi[c][2] - lo[c][2]}
+				if d[0] >= 0 {
+					w = max(w, math.Sqrt(d[0]*d[0]+d[1]*d[1]+d[2]*d[2]))
+				}
+			}
+			return w
+		}
+		base := 0.0
 		for k := range poses {
+			if k == nBase {
+				base = worst()
+			}
 			rk, ok := rel(k, g.parent, i)
 			if !ok {
 				continue // the parent is not there in this pose
 			}
-			seen = true
 			for c := 0; c < 8; c++ {
-				p := rk.Apply(corner(g.lo, g.hi, c))
+				p := rk.Apply(corners[c])
 				for a := 0; a < 3; a++ {
 					lo[c][a], hi[c][a] = min(lo[c][a], p[a]), max(hi[c][a], p[a])
 				}
 			}
 		}
-		if !seen {
-			return 0
+		if len(poses) == nBase {
+			return worst()
 		}
-		worst := 0.0
-		for c := range lo {
-			d := [3]float64{hi[c][0] - lo[c][0], hi[c][1] - lo[c][1], hi[c][2] - lo[c][2]}
-			worst = max(worst, math.Sqrt(d[0]*d[0]+d[1]*d[1]+d[2]*d[2]))
-		}
-		return worst
+		return max(base, extraWeight*worst())
 	}
 	for i := 0; i < nb; i++ {
 		if groups[i].alive {
@@ -228,6 +291,7 @@ func MakePlan(rig *Rig, boxes []Box, maxParts int) *Plan {
 		pg := &groups[g.parent]
 		// Its cubes now belong to the parent group, where the pose the parent is built in puts
 		// them; not there in that pose, they are left out.
+		was := [2][3]float64{pg.lo, pg.hi}
 		if r0, ok := rel(max(0, shown[g.parent]), g.parent, best); ok && r0.Uniform() > tiny {
 			lo, hi := g.lo, g.hi
 			if !pg.alive || len(pg.members) == 0 {
@@ -255,8 +319,8 @@ func MakePlan(rig *Rig, boxes []Box, maxParts int) *Plan {
 				groups[i].cost = cost(i)
 			}
 		}
-		if parent < nb {
-			groups[parent].cost = cost(parent)
+		if parent < nb && was != [2][3]float64{pg.lo, pg.hi} {
+			groups[parent].cost = cost(parent) // its cubes reach further now
 		}
 	}
 	for {

@@ -12,7 +12,9 @@
 //
 //	animpreview -pack <pack dir> [-pack ...] -out <dir> [-parts N] <entity id>[=preset[@t1,t2,...]] ...
 //
-// Presets: idle, walk, run, hover, fly, float, swim, sleep.
+// Presets: idle, walk, run, hover, fly, float, swim, sleep. A preset can be followed by actor
+// properties (+cobblemon:primary=6) and by an animation to play on top as a server's
+// AnimateEntity does (!animation.x.cry): 'ns:mob=idle+ns:prop=1!animation.ns.cry@0.2,0.6'.
 package main
 
 import (
@@ -28,6 +30,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"runtime/pprof"
 	"strconv"
 	"strings"
 	"time"
@@ -58,6 +61,13 @@ var presets = map[string]anim.Inputs{
 
 const step = 0.05
 
+// playing is the animation the current sheet plays on top (a server's AnimateEntity); propsOn
+// whether the sheet's actor properties are set yet.
+var (
+	playing string
+	propsOn bool
+)
+
 func main() {
 	var packs list
 	flag.Var(&packs, "pack", "an unpacked Bedrock resource pack (repeatable, bottom of the stack first)")
@@ -65,8 +75,9 @@ func main() {
 	parts := flag.Int("parts", 0, "displays per mob (0: the bridge's budget)")
 	cell := flag.Int("size", 300, "cell size in pixels")
 	zipOut := flag.String("zip", "", "also write the converted Java pack here")
+	prof := flag.String("cpuprofile", "", "write a CPU profile of the conversion here")
 	flag.Parse()
-	if len(packs) == 0 || flag.NArg() == 0 {
+	if len(packs) == 0 || (flag.NArg() == 0 && *prof == "" && *zipOut == "") {
 		flag.Usage()
 		os.Exit(2)
 	}
@@ -78,8 +89,18 @@ func main() {
 		}
 		in.Packs = append(in.Packs, s)
 	}
+	if *prof != "" {
+		pf, err := os.Create(*prof)
+		if err != nil {
+			fail(err)
+		}
+		_ = pprof.StartCPUProfile(pf)
+	}
 	start := time.Now()
 	res, err := javapack.Convert(in)
+	if *prof != "" {
+		pprof.StopCPUProfile()
+	}
 	if err != nil {
 		fail(err)
 	}
@@ -104,9 +125,35 @@ func main() {
 		if preset == "" {
 			preset = "idle"
 		}
+		// preset[+property=value...][!animation played on top at time 0]
+		preset, play, _ := strings.Cut(preset, "!")
+		parts := strings.Split(preset, "+")
+		preset = parts[0]
 		inp, ok := presets[preset]
 		if !ok {
 			fail(fmt.Errorf("no preset %q", preset))
+		}
+		props := map[string]float64{}
+		for _, kv := range parts[1:] {
+			k, v, _ := strings.Cut(kv, "=")
+			f, err := strconv.ParseFloat(v, 64)
+			if err != nil {
+				fail(fmt.Errorf("property %q: %v", kv, err))
+			}
+			props[k] = f
+			preset += "_" + k[strings.LastIndexByte(k, ':')+1:] + v
+		}
+		if len(props) > 0 {
+			// The properties are set once the mob has settled into its idle state: a one-shot
+			// that a property starts is seen from its beginning.
+			inp.Prop = func(name string) (float64, bool) {
+				v, ok := props[name]
+				return v, ok && propsOn
+			}
+		}
+		playing = play
+		if play != "" {
+			preset += "_" + play[strings.LastIndexByte(play, '.')+1:]
 		}
 		ts := []float64{0, 0.35, 0.7}
 		if times != "" {
@@ -333,8 +380,15 @@ func sheet(packs []*javapack.Source, z zipFS, res *javapack.Result, id, preset s
 		sf.Step(dt)
 		sr.Step(dt)
 	}
+	propsOn = false
 	for i := 0; i < 4; i++ {
 		advance(0.55)
+	}
+	propsOn = true
+	if playing != "" {
+		if !e.Anim.Play(sr, playing, 0.2, "") || !e.Anim.Play(sf, playing, 0.2, "") {
+			fail(fmt.Errorf("%s has no animation %s", id, playing))
+		}
 	}
 	now := 0.0
 	type row struct {

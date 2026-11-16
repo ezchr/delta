@@ -87,9 +87,12 @@ Custom (add-on) mobs are drawn part by part on item displays and play the pack's
 | Displays, updates, budget on the wire | `TestAnimatedMob`; bot on the loopback server with the Cobblemon add-on: 24 part displays per Charizard riding it, updates with the interpolation start, standing/walking/hover/fly as the mob moves, 16 animated mobs at most, 0 packet errors | works |
 | A real Java client | nobody looked yet | open |
 
-Not done: animation sound and particle effects, bones that only move in animations the sampled
-situations never play (attacks; they are frozen on their parent), a smaller pack (one item
-definition per entity).
+One-shots: attack clips on actor properties (rendered: `animpreview ...=idle+cobblemon:primary=6`),
+animations the server plays (AnimateEntity; live with `/playanimation`), `v.attack_time` and
+`q.hurt_time` from actor events (unit test only). Mobs out of sight take no animation slot.
+
+Not done: animation sound and particle effects, a smaller pack (one item definition per
+entity), AnimateEntity's next state and controller.
 
 ## What is stubbed / not done
 

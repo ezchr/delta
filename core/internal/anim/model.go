@@ -65,3 +65,9 @@ func (m *Model) Moves() bool {
 
 // FullRig compiles the model's rig for every bone (for tools and tests; not kept).
 func (m *Model) FullRig() *Rig { return Compile(m.src, m.lib, nil) }
+
+// Play plays an animation on top of a state of this model's rig (State.Play); one the entity
+// file does not list is compiled from the kept animation files.
+func (m *Model) Play(s *State, id string, blendOut float64, stop string) bool {
+	return s.Play(id, blendOut, stop, m.lib)
+}

@@ -98,6 +98,7 @@ const (
 	QIsJumping
 	QIsInContactWithWater
 	QIsSpectator
+	QHurtTime
 )
 
 var queryNames = map[string]Query{
@@ -124,7 +125,7 @@ var queryNames = map[string]Query{
 	"is_first_person": QIsFirstPerson, "is_wall_climbing": QIsWallClimbing,
 	"can_fly": QCanFly, "can_swim": QCanSwim, "can_walk": QCanWalk, "can_climb": QCanClimb,
 	"is_levitating": QIsLevitating, "is_jumping": QIsJumping,
-	"is_in_contact_with_water": QIsInContactWithWater, "is_spectator": QIsSpectator,
+	"is_in_contact_with_water": QIsInContactWithWater, "is_spectator": QIsSpectator, "hurt_time": QHurtTime,
 }
 
 // Host answers queries. args are the call's arguments (strings as Intern values).
