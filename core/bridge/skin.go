@@ -21,8 +21,10 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+	"sync"
 	"time"
 
+	jserver "github.com/df-mc/dragonfly/server/java/protocol/server"
 	"github.com/google/uuid"
 	"github.com/sandertv/gophertunnel/minecraft/protocol"
 	"github.com/sandertv/gophertunnel/minecraft/protocol/login"
@@ -419,4 +421,40 @@ func notchTransparency(im *image.NRGBA, x0, y0, x1, y1 int) {
 			im.Pix[im.PixOffset(x, y)+3] = 0
 		}
 	}
+}
+
+// Java players on this bridge as the other Java players here see them. BDS's player list gives a
+// bridged player a derived XUID, which has no skin to look up (entities_players.go), so the
+// player's own Mojang-signed textures property (online logins, proxy forwarding) is handed to the
+// other Java clients directly, keyed by the Bedrock login's UUID. Unsigned textures (offline
+// logins) are left out: a Java client does not draw another player's unsigned skin.
+var bridgedTextures sync.Map // uuid.UUID -> *[]jserver.Property
+
+// shareTextures makes the player's signed textures known to the other Java players until the
+// returned func is called.
+func (p *Player) shareTextures() (stop func()) {
+	if p.login == nil {
+		return func() {}
+	}
+	id, err := uuid.Parse(p.login.IdentityData.Identity)
+	if err != nil {
+		return func() {} // an Xbox login: its UUID is not known here
+	}
+	for _, pr := range p.profile.Properties {
+		if pr.Name == "textures" && pr.Signature != "" {
+			props := &[]jserver.Property{pr}
+			bridgedTextures.Store(id, props)
+			return func() { bridgedTextures.CompareAndDelete(id, props) }
+		}
+	}
+	return func() {}
+}
+
+// bridgedSkin returns the signed textures of the bridged player with this Bedrock UUID (nil: not
+// one, or no signed textures).
+func bridgedSkin(id uuid.UUID) []jserver.Property {
+	if v, ok := bridgedTextures.Load(id); ok {
+		return *v.(*[]jserver.Property)
+	}
+	return nil
 }

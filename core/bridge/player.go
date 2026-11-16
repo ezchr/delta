@@ -143,6 +143,7 @@ func serve(jp *jserver.Player) {
 		return
 	}
 	p.login = login
+	defer p.shareTextures()()
 
 	// Connect before the Java login, so the player spawns straight into the server's world; a
 	// server that takes longer than firstDialWait (busy, still starting) is waited for in the

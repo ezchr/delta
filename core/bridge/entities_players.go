@@ -140,6 +140,11 @@ func (p *Player) playerList(pk *packet.PlayerList) {
 			te.display = en.Username
 		}
 		tab[id] = te
+		if props := bridgedSkin(en.UUID); props != nil {
+			te.props = props // another Java player on this bridge (skin.go)
+			p.sendTabAdd(te)
+			continue
+		}
 		p.lookUpSkin(te)
 	}
 }

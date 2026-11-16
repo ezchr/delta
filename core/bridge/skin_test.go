@@ -14,6 +14,7 @@ import (
 	"testing"
 
 	jserver "github.com/df-mc/dragonfly/server/java/protocol/server"
+	"github.com/google/uuid"
 	"github.com/sandertv/gophertunnel/minecraft/protocol"
 	"github.com/sandertv/gophertunnel/minecraft/protocol/login"
 )
@@ -273,5 +274,26 @@ func TestClientDataHelpers(t *testing.T) {
 	d := newDevice()
 	if len(d.DeviceID) != 32 || login.DeviceID(d.DeviceID).Format() != login.DeviceIDFormatLowerHexString || d.DeviceModel == "" {
 		t.Errorf("device %+v", d)
+	}
+}
+
+func TestBridgedSkin(t *testing.T) {
+	id := uuid.New()
+	signed := jserver.Property{Name: "textures", Value: "dGV4", Signature: "c2ln"}
+	p := &Player{login: &BedrockLogin{IdentityData: login.IdentityData{Identity: id.String()}},
+		profile: jserver.Profile{Properties: []jserver.Property{signed}}}
+	stop := p.shareTextures()
+	if got := bridgedSkin(id); len(got) != 1 || got[0] != signed {
+		t.Fatalf("bridged skin %v", got)
+	}
+	stop()
+	if got := bridgedSkin(id); got != nil {
+		t.Errorf("still shared after leaving: %v", got)
+	}
+	// Unsigned textures (an offline login) are not shared.
+	p.profile.Properties[0].Signature = ""
+	defer p.shareTextures()()
+	if got := bridgedSkin(id); got != nil {
+		t.Errorf("unsigned textures shared: %v", got)
 	}
 }
