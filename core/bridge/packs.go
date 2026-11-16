@@ -334,7 +334,7 @@ func (p *Player) javaPackFor(conn *minecraft.Conn, gd minecraft.GameData, pal *b
 		if len(res.HudMarkers) > 0 {
 			p.log.Info("titles that are data for the pack's own HUD are not shown", "markers", strings.Join(res.HudMarkers, ", "))
 		}
-		b = &packBuild{res: res, sha: res.SHA1, id: uuid.NewSHA1(uuid.NameSpaceURL, []byte(ProductName+"-pack:"+res.SHA1)),
+		b = &packBuild{res: res, sha: res.SHA1, id: serverPackID,
 			slots: in.Slots, state: state, took: time.Since(start)}
 		if !res.Empty() {
 			if err := storeJavaPack(res.SHA1, res.Zip); err != nil {
@@ -569,6 +569,12 @@ func (p *Player) showHeldForms() {
 		p.showForm(pk)
 	}
 }
+
+// serverPackID names the pack of every Delta server the same, whatever is in it. A Java client
+// that stays connected while the server restarts (behind a proxy it goes to another server and
+// back) still has the pack it was sent before; pushing the new one under the same id replaces it.
+// With an id per content the old pack stayed under the new one, and a font in both broke.
+var serverPackID = uuid.NewSHA1(uuid.NameSpaceURL, []byte(ProductName+"-pack"))
 
 // packsTick pushes the current server's pack when it differs from the client's: a new server
 // pops the old pack first. In the waiting area the client keeps what it has.
