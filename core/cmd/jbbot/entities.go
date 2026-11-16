@@ -538,6 +538,39 @@ func readData(r *wire.Reader, ser int32) (string, bool) {
 		return fmt.Sprintf("v(%g,%g,%g)", r.Float32(), r.Float32(), r.Float32()), true
 	case 40:
 		return fmt.Sprintf("q(%g,%g,%g,%g)", r.Float32(), r.Float32(), r.Float32(), r.Float32()), true
+	case 41: // a profile (a mannequin's): partial or full, then the skin patch
+		if r.Bool() {
+			r.UUID()
+			r.String(16)
+		} else {
+			if r.Bool() {
+				r.String(16)
+			}
+			if r.Bool() {
+				r.UUID()
+			}
+		}
+		for n := r.VarInt(); n > 0 && r.Err == nil; n-- {
+			r.String(64)
+			r.String(32767)
+			if r.Bool() {
+				r.String(1024)
+			}
+		}
+		var tex [3]string
+		for i := range tex {
+			if r.Bool() {
+				tex[i] = r.String(32767)
+			}
+		}
+		model := "default"
+		if r.Bool() {
+			model = "wide"
+			if r.Bool() {
+				model = "slim"
+			}
+		}
+		return fmt.Sprintf("profile(skin=%q,cape=%q,model=%s)", tex[0], tex[1], model), r.Err == nil
 	case 2:
 		return strconv.FormatInt(r.VarLong(), 10), true
 	case 3:

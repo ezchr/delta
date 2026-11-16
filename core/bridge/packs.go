@@ -339,7 +339,7 @@ func (p *Player) javaPackFor(conn *minecraft.Conn, gd minecraft.GameData, pal *b
 		}
 		st := res.Stats
 		p.log.Info("converted resource packs", "packs", strings.Join(names, ", "), "sha1", res.SHA1, "bytes", len(res.Zip),
-			"overrides", st.Overrides, "items", st.Items, "armour", st.Equipment, "held3d", st.Held, "blocks", st.Blocks, "entities", st.Entities, "animated", st.Animated, "parts", st.Parts, "lang", st.LangKeys,
+			"overrides", st.Overrides, "items", st.Items, "armour", st.Equipment, "held3d", st.Held, "blocks", st.Blocks, "entities", st.Entities, "standins", st.StandIns, "animated", st.Animated, "parts", st.Parts, "lang", st.LangKeys,
 			"took", b.took.Round(time.Millisecond))
 		for _, m := range st.Missing {
 			p.log.Info("resource pack conversion: not converted", "what", m)

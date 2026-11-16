@@ -29,6 +29,7 @@ type entityDef struct {
 	id                 string
 	textures, geometry map[string]string
 	animations         map[string]string
+	renderControllers  []json.RawMessage
 	scripts            struct {
 		Animate      []json.RawMessage `json:"animate"`
 		PreAnimation []string          `json:"pre_animation"`
@@ -66,6 +67,7 @@ func (b *builder) entities() {
 						Geometry   map[string]string `json:"geometry"`
 						Animations map[string]string `json:"animations"`
 						Scripts    json.RawMessage   `json:"scripts"`
+						RC         []json.RawMessage `json:"render_controllers"`
 					} `json:"description"`
 				} `json:"minecraft:client_entity"`
 			}
@@ -76,7 +78,7 @@ func (b *builder) entities() {
 			if d.Identifier == "" || strings.HasPrefix(d.Identifier, "minecraft:") {
 				continue
 			}
-			def := &entityDef{id: d.Identifier, textures: d.Textures, geometry: d.Geometry, animations: d.Animations}
+			def := &entityDef{id: d.Identifier, textures: d.Textures, geometry: d.Geometry, animations: d.Animations, renderControllers: d.RC}
 			if len(d.Scripts) > 0 {
 				_ = json.Unmarshal(d.Scripts, &def.scripts) // a script section of another shape: no animation
 			}
@@ -100,8 +102,16 @@ func (b *builder) entities() {
 		geoID, texPath := pick(d.geometry), pick(d.textures)
 		g := b.geos[geoID]
 		if g == nil {
-			b.res.Stats.miss("entity %s: geometry %q not found", id, geoID)
-			continue
+			// A vanilla shape: a Java entity stands in, or the shape's own geometry is used.
+			vg, ok := b.vanillaShape(d, geoID, &texPath)
+			if !ok {
+				b.res.Stats.miss("entity %s: geometry %q not found", id, geoID)
+				continue
+			}
+			if vg == nil {
+				continue
+			}
+			g = vg
 		}
 		tex, ok := b.texture("item", texPath)
 		if !ok {

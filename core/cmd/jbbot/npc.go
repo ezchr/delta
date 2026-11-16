@@ -66,7 +66,7 @@ func init() {
 func npcHandle(b *bot, id int32, r *wire.Reader) bool {
 	switch id {
 	case v777.ClientboundPlayShowDialog:
-		body := r.Rest()
+		body := r.B[r.Off:] // not consumed: inv.go reads it too
 		if !strings.Contains(string(body), "delta:npc") {
 			bnpc.open = false
 			return false

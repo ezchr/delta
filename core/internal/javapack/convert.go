@@ -82,7 +82,9 @@ type Result struct {
 	ItemEquip  map[string]Equip  // wearable custom item id -> slot and equipment asset
 	Blocks     map[string]int    // custom block name -> index in Input.Slots
 	Entities   map[string]Entity // custom entity identifier -> model
-	Lang       map[string]string
+	// StandIns are the custom entities shown as a Java entity of their (vanilla) shape.
+	StandIns map[string]StandIn
+	Lang     map[string]string
 	// HudMarkers are the texts a pack's own HUD (ui/*.json) looks for in the title, subtitle or
 	// action bar: a title holding one is data for that HUD, not text for the player.
 	HudMarkers []string
@@ -95,6 +97,7 @@ type Stats struct {
 	Packs, Overrides, Items, Blocks, Entities, LangKeys int
 	Equipment, Held                                     int // armour pieces with a layer, 3D held models
 	Animated, Parts                                     int // entities with animated parts, and their part models
+	StandIns                                            int // entities shown as a Java entity of their vanilla shape
 	AnimBytes                                           int // animation files kept (compressed) for rigs compiled later
 	EntitiesTook                                        time.Duration
 	Missing                                             []string // what could not be converted (first few)
@@ -109,7 +112,7 @@ func (s *Stats) miss(format string, a ...any) {
 // Empty reports whether the conversion made nothing worth sending.
 func (r *Result) Empty() bool {
 	s := r.Stats
-	return s.Overrides+s.Items+s.Blocks+s.Entities+s.LangKeys == 0
+	return s.Overrides+s.Items+s.Blocks+s.Entities+s.StandIns+s.LangKeys == 0
 }
 
 type builder struct {
@@ -147,7 +150,7 @@ func Convert(in *Input) (*Result, error) {
 		texDone: map[string]texInfo{}, usedSafe: map[string]bool{}, blockStates: map[string]map[string]string{},
 		equipDone: map[string]string{}, equipName: map[string]string{}, itemSafe: map[string]string{}, itemFlat: map[string]bool{},
 		res: &Result{ItemModels: map[string]string{}, ItemNames: map[string]string{}, ItemEquip: map[string]Equip{}, Blocks: map[string]int{},
-			Entities: map[string]Entity{}}}
+			Entities: map[string]Entity{}, StandIns: map[string]StandIn{}}}
 	b.res.Stats.Packs = len(in.Packs)
 	for _, s := range in.Packs {
 		b.readLang(s)

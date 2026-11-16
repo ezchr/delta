@@ -230,6 +230,48 @@ mob of that type is first shown, for its parts' bones only.
   with the mob while it walks and turns (they ride it; their yaw is interpolated over the same
   ticks as their pose), no gaps at joints, and the frame rate with 16 mobs around.
 
+## Custom entities with a vanilla shape (NPCs)
+
+- **An add-on's own entity type can name a geometry only the vanilla pack has**
+  (`geometry.villager_v2`, `geometry.humanoid.custom`). The converter never sees that geometry,
+  so there was no model and the actor was not shown to Java at all (four NPCs of the Cobblemon
+  port). `internal/javapack/vanillashapes.go` is the table of such shapes; one line per shape.
+- What a shape becomes: a humanoid shape is a **mannequin** wearing the pack's texture; any other
+  shape with the vanilla texture is the Java mob of that shape (`geometry.villager_v2` -> a
+  villager); any other shape with a texture of the pack's own is a model built from the
+  geometry in the table, when it has one (the old villager: `cobblemon:trainer_association`),
+  because a Java mob cannot be given a texture per entity.
+- **Mannequin** (Java 1.21.9+, in 26.2 and 26.3): a player-shaped entity that is not a player:
+  no tab list entry, no profile lookup. Entity data 16 skin parts (byte), 17 profile
+  (serializer 41), 18 immovable, 19 description (optional text: "NPC" under the name unless
+  sent as none). The profile is `bool full` (false: partial = optional name, optional id,
+  properties), then the skin patch: optional body, cape and elytra textures (resource
+  locations) and an optional model (bool: slim). **The body texture is a resource location**:
+  `delta:entity/x` is `assets/delta/textures/entity/x.png` of the pack the client has, so a
+  texture of the converted pack is a skin with no skin server and no signature. Bedrock's
+  64x64 skin layout is Java's.
+- Which texture: the entity's first render controller. `textures: ["Array.skins[<Molang>]"]`
+  gives the array's textures and the index expression, evaluated per actor (variant, mark
+  variant, actor properties) and again on SetActorData; `Texture.x` gives one; anything else
+  the entity's default. `cobblemon:rct_trainer` has 1559 skins picked by the property
+  `cobblemon:trainer`: all are copied into the Java pack (3.2 MB of it).
+- **Using them**: nothing special. A Java right click on any shown entity is a UseItemOnEntity
+  interact (`entities_events.go`), which a script's `playerInteractWithEntity` and an NPC
+  component both see. In the Cobblemon port all four answer with a script form
+  (ModalFormRequest -> `forms.go` dialog): the nurse and the Poke Mart clerk an ActionForm of
+  offers (the script cancels the interaction, so the `minecraft:npc` component's dialogue never
+  opens), `rct_trainer` a `cbm:dialogue` form, the Trainer Association an ActionForm. A click
+  on a dialog button goes back as the form response. The Java client opens no trade screen for
+  a villager by itself; only the server can.
+- Seen on the way: a player without a starter gets the `cbm:starter` form on every interaction,
+  next to the NPC's own. A Bedrock client shows one form at a time and refuses the other; the
+  bridge shows whichever came last on top. Not changed.
+- Test: `bridge.TestStandIns`, `javapack.TestVanillaShapes`; live `/root/jbtest/npclive.sh`
+  (outside the repository): summons each of the four at the bot, `expectent villager|mannequin`,
+  `use`, `form N`; the bot logs a mannequin's profile as `17=profile(skin="delta:entity/...")`.
+  jbbot's NPC handler used to eat the dialog packet before the form handler read the form id
+  (`DIALOG form 0:` with nothing after it): fixed.
+
 ## Leads
 
 - **BDS tells what holds a lead with actor data `LEASH_HOLDER`** (key 37, int64): the holder's

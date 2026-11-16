@@ -225,7 +225,7 @@ func bedrockEntity(packs []*javapack.Source, id string) (*render.BedrockGeometry
 		}
 	}
 	if geo == nil || tex == nil {
-		fail(fmt.Errorf("%s: geometry %s or texture %s not found", id, geoID, texPath))
+		return nil, nil // a vanilla shape: only the converted model can be drawn
 	}
 	return geo, tex
 }
@@ -270,8 +270,29 @@ func sheet(packs []*javapack.Source, z zipFS, res *javapack.Result, id, preset s
 		fail(fmt.Errorf("entity %s was not converted", id))
 	}
 	geo, tex := bedrockEntity(packs, id)
-	if e.Anim == nil {
-		fail(fmt.Errorf("entity %s has no scripts", id))
+	if e.Anim == nil || geo == nil {
+		// Nothing to pose or nothing to compare with: the static model from three sides.
+		whole, err := render.LoadJavaModel(e.Model, z.model)
+		if err != nil {
+			fail(err)
+		}
+		qs := whole.Quads(z.texture)
+		lo, hi := render.Bounds(qs)
+		img := image.NewNRGBA(image.Rect(0, 0, 3*cell, cell))
+		for i, v := range render.Views {
+			draw.Draw(img, image.Rect(i*cell, 0, (i+1)*cell, cell), render.Draw(qs, v, cell, lo, hi), image.Point{}, draw.Src)
+		}
+		name := strings.NewReplacer(":", "_", "/", "_").Replace(id) + "_model.png"
+		f, err := os.Create(filepath.Join(dir, name))
+		if err != nil {
+			fail(err)
+		}
+		defer f.Close()
+		if err := png.Encode(f, img); err != nil {
+			fail(err)
+		}
+		fmt.Println("  wrote", filepath.Join(dir, name), "(static model only)")
+		return
 	}
 	full := e.Anim.FullRig()
 	rig := e.Anim.Rig()

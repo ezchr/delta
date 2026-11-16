@@ -74,6 +74,8 @@ type entity struct {
 	sentScale float64
 	// attrSpeed, attrJump: the server's movement and horse jump strength (rideable mobs).
 	attrSpeed, attrJump float32
+	// stand: a custom actor shown as the Java entity of its vanilla shape (entities_standin.go).
+	stand *standIn
 	// parts are the Java ids of the displays that draw an animated custom mob part by part; they
 	// ride it (entities_anim.go).
 	parts []int32
@@ -118,6 +120,11 @@ func entityUUID(rid uint64) uuid.UUID {
 // addActor shows an AddActor.
 func (p *Player) addActor(pk *packet.AddActor) {
 	t, ok := entityTypes[pk.EntityType]
+	var stand *standIn
+	if !ok {
+		// A custom actor with a vanilla shape is the Java entity of that shape.
+		t, stand, ok = p.standInFor(pk.EntityType)
+	}
 	if !ok && p.addTextActor(pk) {
 		return
 	}
@@ -132,7 +139,7 @@ func (p *Player) addActor(pk *packet.AddActor) {
 		meta = protocol.EntityMetadata{}
 	}
 	e := &entity{rid: pk.EntityRuntimeID, uniq: pk.EntityUniqueID, bedrock: pk.EntityType, t: t, java: t.java,
-		uuid: entityUUID(pk.EntityRuntimeID), meta: meta}
+		uuid: entityUUID(pk.EntityRuntimeID), meta: meta, stand: stand}
 	e.flags, _ = meta[protocol.EntityDataKeyFlags].(int64)
 	e.flags2, _ = meta[protocol.EntityDataKeyFlagsTwo].(int64)
 	switch pk.EntityType {
@@ -182,6 +189,7 @@ func (p *Player) addActor(pk *packet.AddActor) {
 		p.log.Debug("add actor", "type", pk.EntityType, "rid", e.rid, "java", e.id, "flags", e.flags, "flags2", e.flags2, "meta", len(meta))
 	}
 	p.showEntity(e)
+	p.sendStandInData(e, true)
 	for _, l := range pk.EntityLinks {
 		p.applyLink(l)
 	}
