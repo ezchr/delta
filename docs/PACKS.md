@@ -31,8 +31,8 @@ core").
 | `texts/*.lang` (all languages) | `lang/<code>.json` (lower-case codes: `en_US` -> `en_us`) | every key, so `name_key` in the mapping can be sent as a translatable component |
 
 Not converted, listed in the report: JSON UI, particles, fogs, custom materials/shaders,
-animation controllers, animations (entities are static; attachable animations are replaced by
-vanilla-like placement), render controller logic beyond the default texture/geometry, fonts and
+animation controllers, animations (packconv's entities are static, the core's converter animates
+them: "Animated entities"; attachable animations are replaced by vanilla-like placement), render controller logic beyond the default texture/geometry, fonts and
 glyphs, biome colours, `poly_mesh` geometry, attachables of vanilla items.
 
 ## Java base items
@@ -78,6 +78,25 @@ An entity part's model has the bone's pivot at (8, 8, 8). Shown on an `item_disp
 turns its item half a turn about Y) at `offset` (blocks) from the entity, for an entity facing
 south (yaw 0), it appears where the Bedrock bone is. `model_yaw: 180` is the
 `javasession.EntityModel.Yaw` value that keeps that half turn when the caller undoes it.
+
+## Animated entities (the core's converter)
+
+The converter the bridge uses (`core/internal/javapack`) animates custom mobs; `packconv` does
+not yet (its entities are static and it writes a part per bone). What the core's does, per
+client entity with `scripts.animate`:
+
+* the whole-mob model as before, but in the pose the mob stands idle in instead of the bind pose;
+* at most 24 part models (`Delta:entity/<id>/p<n>`): one per group of bones that move together,
+  chosen by how far each bone moves in eight sampled situations (`anim.MakePlan`), the group's
+  pivot at (8, 8, 8), shrunk by `K` when it does not fit -16..32 (the display scales it back;
+  an item display's scale has no limit of 4, only an item model's `display` transform has);
+* `Entity.Anim`: the parts and a rig compiled on first use from the animation and controller
+  files the conversion keeps (compressed).
+
+`packconv/render` draws Bedrock geometry posed by an animation (`Options.Pose`: rotation added,
+position, scale per bone); `core/cmd/animpreview` uses it to check the core's part models and
+display transforms against the posed Bedrock geometry. Details, conventions and budgets:
+NOTES.md "Custom mob animations".
 
 ## mapping.json (schema 1)
 

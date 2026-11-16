@@ -74,6 +74,23 @@ Open manual confirmations: a vanilla retail Bedrock client opening the pause-men
 26.3 Delta through ViaVersion (premium auth via Velocity forwarding is PROVEN with a real
 account, but the 1.21->26.3 registry translation drops the client - see docs/LOGIN.md).
 
+## Custom mob animations (branch `animations`, 2026-11-16; not seen in a real client yet)
+
+Custom (add-on) mobs are drawn part by part on item displays and play the pack's animations
+(NOTES.md "Custom mob animations").
+
+| Item | Verified how | Result |
+|---|---|---|
+| Molang, keyframes, controllers, blending, pose maths, bone merging | unit tests (`internal/molang`, `internal/anim`) | pass |
+| Part models a 26 client takes (elements in -16..32, UVs inside the texture) | fixture test; `checkpack.py` on the converted Cobblemon pack (31562 files) | no problems |
+| Java display transforms = posed Bedrock geometry | `animpreview` sheets: Charizard idle/walk/fly/sleep, Pikachu, Eevee, Magikarp, Pidgey; a display per bone: 0.00-0.04 % of pixels differ; budget of 24: up to 0.9 % (1.9 % for Charizard asleep, a frozen tail segment) | match |
+| Displays, updates, budget on the wire | `TestAnimatedMob`; bot on the loopback server with the Cobblemon add-on: 24 part displays per Charizard riding it, updates with the interpolation start, standing/walking/hover/fly as the mob moves, 16 animated mobs at most, 0 packet errors | works |
+| A real Java client | nobody looked yet | open |
+
+Not done: animation sound and particle effects, bones that only move in animations the sampled
+situations never play (attacks; they are frozen on their parent), a line-of-sight test, a
+smaller pack (one item definition per entity).
+
 ## What is stubbed / not done
 
 * Identity: DONE. `OfflineIdentity` (offline) and `OnlineIdentity` (premium, the default): premium

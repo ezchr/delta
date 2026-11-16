@@ -100,7 +100,135 @@ where the code is, and how to test it.
   their own geometry use the 2D textures from the pack's 2D subpack, and a texture is built from the
   model when there is none.
 - 3D held items use only the attachable's first pose; animations and Molang are ignored. Java
-  mirrors the pose for the off hand but not the model.
+  mirrors the pose for the off hand but not the model. (Custom mobs do animate: next section.)
+
+## Custom mob animations
+
+Custom (add-on) mobs animate for Java players since 0.3.4. Code: `core/internal/molang` (Molang
+to closures), `core/internal/anim` (animation files, controllers, the running state, the plan
+of which bones get a display), `core/internal/javapack/entities.go` (the models),
+`core/bridge/entities_anim.go` (the displays), `core/cmd/animpreview` (pictures).
+
+**What Bedrock does.** A client entity file names animations and animation controllers
+(`animations`: short name -> id) and plays the ones in `scripts.animate` (a name, or `{name:
+condition}`). `scripts.initialize` runs once, `scripts.pre_animation` every frame before the
+animations; packs compute their own state there (the Cobblemon port sets `v.pose` from
+`q.ground_speed`, `q.is_on_ground`, `q.is_in_water`, `q.is_sleeping` and actor properties, and
+its controller only compares `v.pose`). An animation gives bones a rotation, position and scale
+(numbers, Molang, or keyframes with `pre`/`post` and `lerp_mode: catmullrom`); animations add
+up, weighted (rotation and position add, scale multiplies); a controller is a state machine
+whose states play animations and blend over `blend_transition` seconds when it changes state.
+`scripts.scale` scales the whole model, on top of the actor's scale (Cobblemon: two actor
+properties multiplied; the bridge did not apply it at all before, so every Pokemon was drawn
+at the base size).
+
+**What Java can do.** A custom mob is item displays. A display shows one item model and takes
+a translation, a left rotation (quaternion), a scale and a right rotation; when a packet that
+changes them also carries entity data 8 (`start_interpolation`, sent as 0) the client
+interpolates from what it shows to the new values over data 9 ticks
+(`interpolation_duration`). A display that rides another entity moves with it, on the client.
+Its own yaw (`move_entity_rot`) is interpolated over data 10 ticks. So: one display per moving
+part, riding the mob's own (now empty) display; a pose every few ticks; the mob's yaw as each
+part's entity rotation. There is no skinning and no per-vertex anything: a part is rigid.
+BetterModel (the Paper plugin) does the same thing the same way: a display per Blockbench
+group, mounted on the base entity, yaw by entity rotation with a pos/rot interpolation
+duration, a keyframe every 3 ticks (`lerp-frame-time`), packets bundled.
+
+**Conventions (verified with `animpreview`, see below; getting one wrong gives a pose that is
+plainly broken).**
+
+- All animation maths is in Java model space, pixels: a Bedrock point (x, y, z) is (-x, y, z),
+  a Bedrock rotation (rx, ry, rz) is the matrix Rz(rz) Ry(-ry) Rx(-rx), an animation position
+  (px, py, pz) moves the bone by (-px, py, pz) in its parent's frame. A bone's rotation is its
+  bind rotation plus the animations' (the angles add, they are not multiplied as matrices).
+- A bone: `T(position) * RotAbout(pivot, rotation) * ScaleAbout(pivot, scale)`, after its
+  parent's.
+- A display draws its model's point m (0..16) at `T + L (S * Ry180 (m - 8) / 16)`, for yaw 0 =
+  facing south (the half turn is the item display's own). A part's model has the part's pivot
+  at (8, 8, 8) and is shrunk by k when it does not fit -16..32, so for the bone's transform p
+  -> R (s * p) + t and its posed pivot c: `T = Ry180 c / 16`, `L = Ry180 R Ry180` (the
+  quaternion (x, y, z, w) becomes (-x, y, -z, w)), `S = s / k`. The mob's scale multiplies T
+  and S. `anim.PartPose`, `TestPartPose`.
+- A model is built in the **reference pose**: what the rig plays for a mob standing idle on
+  the ground (after two seconds, for controllers to settle), not the geometry's bind pose,
+  which is a T-pose in most packs. The whole-mob model (shown beyond the animation range) is in
+  that pose too: far Charizards no longer hang in a T-pose either.
+- `q.modified_move_speed` is the game's walk animation speed (four times the blocks moved per
+  tick, at most 1) and `q.modified_distance_moved` grows by it every tick: vanilla-style walks
+  are `cos(q.modified_distance_moved * 38.17) * q.modified_move_speed * 80`. With blocks per
+  second for both, legs swung 120 degrees.
+- Packs hide bones by scaling them to 0 (`wing_open_*` scaled away while standing, `wing_closed_*`
+  while flying). Such a bone has no place in the reference pose: its part is built in the first
+  sampled pose that shows it, and a display with scale 0 draws nothing, which is what is wanted.
+
+**Which bones get a display (`anim.MakePlan`).** The rig is run in eight situations (idle,
+walking, running, hovering, flying, floating, swimming, sleeping; 12 poses each) and each bone
+with cubes is scored by how far its cubes move against its parent (pixels, times the square root
+of its size). Bones that do not move at all are merged into their parent for free; then, while
+there are more than `anim.MaxParts` (24) groups, the lowest score is merged, a left bone
+together with its right twin (or a mob limps). A merged bone keeps its reference-pose place on
+its parent. Consequences: a bone that only moves in an animation none of the eight situations
+plays (an attack, a one-shot quirk) is frozen; Charizard (130 bones, 81 with moving cubes)
+keeps torso, one neck part, head, 2x2 arm parts, 2x4 wing parts, 4 tail parts, the flame and
+2x2 leg parts, and loses fingers, jaw, tongue, claws, eyelids and one joint each of neck, tail
+and feet. Where that shows: asleep, its curled tail has one segment sticking out; flying, the
+tail's end is a little off. Raising `anim.MaxParts` trades that against packets and entities.
+
+**Budget (`bridge/entities_anim.go`).** Per player: the 6 nearest animated mobs are stepped
+every 3 ticks, the next 10 every 6 ticks, each with its interpolation duration set to that; a
+mob further than 40 blocks (48 to leave), or beyond those 16, is one display with the whole
+model. Only parts whose pose changed are sent. Worst case 384 part displays and 6*24*6.7 +
+10*24*3.3 = 1760 entity data packets a second (about 40 bytes each); measured with 16 Pokemon
+around the bot (they breathe, so every bone moves all the time): 232 displays, 1140 packets a
+second. One mob near: 24 displays, 150 packets a second. A mob whose bones are still costs
+nothing. Mobs behind walls or underground still count (no line-of-sight test; BetterModel has
+one).
+
+**What is not evaluated degrades to still.** A channel whose Molang does not compile or uses a
+query the bridge has no answer for is left out (that bone keeps still on that channel); an
+animation that is not in the packs (vanilla `animation.humanoid.*`, which add-on NPCs reuse) is
+skipped; a transition on such a condition never fires; an animation played on such a condition
+is not played. Script lines with unknown queries still run (the query is 0), or their variables
+would stay unset. `Rig.Notes` lists all of it (`animpreview` prints it). Not done: particle and
+sound effects of animations, `relative_to`, locators, loops and arrows in Molang, render
+controllers that switch geometry or textures by variant (the first is used, as before),
+materials (emissive layers).
+
+**Costs.** Converting the test world's packs (the Cobblemon port: 992 entities, 930 animated)
+takes 12 s instead of 3.5 s (9 s of it the entities
+on 4 cores), on the first Java login after a start. 14300 part models:
+the Java pack grows from 12.9 MB to 28.1 MB (each part needs a model and an item definition
+file; 28600 files with about 230 bytes of zip overhead each are a good third of the growth; one
+item definition per entity that picks the part by custom model data would save half of those
+files). The animation files a
+conversion used are kept compressed (5.6 MB for Cobblemon) and a type's rig is compiled when a
+mob of that type is first shown, for its parts' bones only.
+
+**How to test.**
+
+- `go test ./internal/molang ./internal/anim ./internal/javapack ./bridge`:
+  keyframes, controllers, the pose maths, the plan, a converted fixture entity (elements inside
+  -16..32, UVs inside the texture), and `TestAnimatedMob` (displays spawned as passengers, updates
+  with the interpolation start, walking changes the controller's state, the 6/10/rest tiers,
+  removal).
+- Pictures: `go build -o animpreview ./cmd/animpreview; ./animpreview -pack <unpacked pack> -out
+  dir 'cobblemon:p0006_charizard=walk@0,0.25,0.5' 'cobblemon:p0016_pidgey=fly'`. Left: the
+  Bedrock geometry with every bone posed (packconv's renderer, Bedrock model space); right: the
+  part models from the converted zip placed by the display values the bridge would send. With
+  `-parts 500` (a display for every bone) the two differ in 0.00 to 0.04 % of the pixels; with
+  the budget of 24, up to 0.9 % for Charizard walking and flying and 1.9 % asleep (the frozen
+  tail segment), and 0.0 % for mobs with fewer moving bones than the budget (Eevee: 5 parts). Look at the sheets: a number says the two sides agree, not
+  that the pose is right.
+- Live: `[core.options] debug_anim = "1"` logs `anim start/stop` and what each controller plays
+  (`anim ... playing="pose=walking blink=open"`). jbbot counts the updates of part displays
+  instead of logging them (`-animlog` logs each): step `animstat` prints one `ANIM mob` line
+  per animated mob. `/root/jbtest/animlive.sh` (outside the repository) installs a wheel on the
+  loopback server, summons mobs at the bot and prints both.
+- `[core.options] animations = "off"` shows every custom mob as its one static model.
+- Not tested: a real Java client. The bot checks packets, the pictures check the maths; nobody
+  has looked at an animated mob in the game yet. First things to look at there: parts in step
+  with the mob while it walks and turns (they ride it; their yaw is interpolated over the same
+  ticks as their pose), no gaps at joints, and the frame rate with 16 mobs around.
 
 ## Leads
 

@@ -118,6 +118,8 @@ same on both transports.
 | `pack_max_mb` | `100` | Packs bigger than this are not downloaded from the server. Packs in the server's own folders are read from there and have no limit. |
 | `pack_cache_mb` | `512` | Size limit of the pack cache (`plugins/delta/packs`). |
 | `java_online` | follows `account_mode` | Overrides only the Java listener's Mojang check: `"true"` = every login (online), `"false"` or `"hybrid"` = premium names only (**hybrid**: `"false"` no longer lets anyone use a premium name), `"unverified"` = nobody (tests only; anyone can take any name). Leave unset in production. |
+| `animations` | `on` | `"off"`: custom mobs are not animated, each is its one static model (fewer entities and packets for the client). |
+| `debug_anim` | — | Any value: log when a custom mob's part displays come and go and what its animation controllers play. |
 | `identity_hook` | follows `account_mode` | `"true"`/`"false"`: derived XUID via the hook or not, independent of the Mojang check. Testing only. |
 
 ## Resource packs (`[packs]`)
