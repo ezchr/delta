@@ -748,7 +748,8 @@ func (conn *Conn) receive(data []byte) error {
 		if err != nil {
 			return err
 		}
-		_ = conn.close(conn.wrap(DisconnectError(pks[0].(*packet.Disconnect).Message), "receive"))
+		dc := pks[0].(*packet.Disconnect)
+		_ = conn.close(conn.wrap(&DisconnectReason{Code: dc.Reason, Message: dc.Message}, "receive"))
 		return nil
 	}
 	if conn.loggedIn && !conn.waitingForSpawn.Load() {

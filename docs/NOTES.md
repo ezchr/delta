@@ -21,6 +21,27 @@ where the code is, and how to test it.
   xuidforward's (`NORMAL`), which would otherwise clear a Java login it doesn't trust. Without
   xuidforward its `config.json` is still read (`auth/trust_config.py`). Tested live:
   `plugin/tests/test_xuidforward_compat.py` covers the logic.
+- **"The server refused: no reason given" on every Java join was BDS refusing the login, not
+  the connection.** An owner on a game panel (BDS in a container, `transport=nethernet`) got
+  `could not join the server err="dial minecraft ... (udp4 host 127.0.0.1:N)->http://127.0.0.1:P
+  (udp4 prflx 10.x.x.x:P ...): "` a second after the join, an error that ends in nothing. The
+  addresses in it are the two ends of a NetherNet connection that was made (the pair ICE chose:
+  the bridge's loopback candidate and the container's own address), so ICE, DTLS and signalling
+  had worked. What ended it was a Disconnect packet from BDS: a login BDS refuses is answered
+  with the disconnection screen hidden, which means a reason code and no message, and the
+  error kept the message only.
+  Now the code comes with the error (`minecraft.DisconnectReason` in the gophertunnel copy) and
+  is put in words, in the log (`why=`) and for the player.
+  Reproduced with `online-mode=true` (what a stock `server.properties` has): the same line, the
+  same second, the code is "not authenticated", and the text now says to set
+  `online-mode=false`. That this was that owner's setting is likely and not known: their log
+  was from the build before. Other refusals that come without a message the same way are named
+  by their code too, or as `no reason given (Bedrock disconnect reason N)`.
+- A container changes nothing for the bridge's own NetherNet connection: with BDS and a client
+  in a network namespace that has `lo` and one interface with a private address, no route to
+  anything else (BDS then says it could not find its public address), a Java player joins, with
+  and without the identity hook. BDS with `online-mode=true` does not finish starting there (no
+  way to the sign-in services), so that case was tried on the host.
 - **A malformed XUID in a broadcast player list can crash other Bedrock clients.** Derived XUIDs
   must look like real ones: 16 digits starting 2535.
 

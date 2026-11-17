@@ -83,6 +83,12 @@ with the hook enabled, the plugin logs a warning telling you to set it to `false
 
 (Real Bedrock players are unaffected either way: they still log in with their own Xbox identity.)
 
+**Troubleshooting:** a Java player who gets `Could not join the server: the server refused: it wants
+an Xbox Live sign-in` (older versions: `the server refused: no reason given`) right after joining,
+on every try, means this setting: put `online-mode=false` into `server.properties` and restart the
+server. The console line `could not join the server` has the reason as `why=`. Leave `transport`
+as it is: it is the Bedrock players' connection too.
+
 ## Bedrock transport (`[bedrock] transport`)
 
 Each Java player is one loopback Bedrock connection to this server. BDS has two transports

@@ -3,6 +3,7 @@ package bridge
 import (
 	"bytes"
 	"errors"
+	"fmt"
 	"regexp"
 	"strings"
 	"sync"
@@ -142,6 +143,22 @@ func humanKey(k string) string {
 
 // dialErrorText is a failed connect's error in words (lang keys in it translated).
 func dialErrorText(err error) string {
+	var dr *minecraft.DisconnectReason
+	if errors.As(err, &dr) {
+		// A server that refuses a login hides the disconnection screen: it sends a reason code
+		// and no message, so the code is all that says why.
+		switch dr.Code {
+		case packet.DisconnectReasonNotAuthenticated, packet.DisconnectReasonNotAuthenticatedFastFail:
+			// The bridge's own login is self-signed, which a server with online-mode=true refuses.
+			return "the server refused: it wants an Xbox Live sign-in. Its server.properties has online-mode=true; " +
+				ProductName + " needs online-mode=false (it checks Java accounts itself)"
+		}
+		text := kickText(dr.Code, dr.Message)
+		if text == "no reason given" {
+			text += fmt.Sprintf(" (Bedrock disconnect reason %d)", dr.Code)
+		}
+		return "the server refused: " + text
+	}
 	var de minecraft.DisconnectError
 	if errors.As(err, &de) {
 		return "the server refused: " + kickText(-1, string(de))
@@ -184,8 +201,12 @@ func reasonText(code int32) string {
 		return "the host's game was suspended"
 	case packet.DisconnectReasonDenyListed:
 		return "you're banned from this server"
-	case packet.DisconnectReasonStaleConnectionBeingReplaced:
+	case packet.DisconnectReasonStaleConnectionBeingReplaced, packet.DisconnectReasonLoggedInOtherLocation:
 		return "you joined again from somewhere else"
+	case packet.DisconnectReasonServerIdConflict:
+		return "a player with this identity is on the server already"
+	case packet.DisconnectReasonOutdatedServer, packet.DisconnectReasonOutdatedClient:
+		return "the server runs another Minecraft version"
 	case packet.DisconnectReasonInvalidPlatformSkin, packet.DisconnectReasonBannedSkin:
 		return "the server refused the skin"
 	case packet.DisconnectReasonNoPermissions:

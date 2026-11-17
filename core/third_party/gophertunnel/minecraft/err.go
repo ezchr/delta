@@ -2,6 +2,7 @@ package minecraft
 
 import (
 	"errors"
+	"fmt"
 	"net"
 )
 
@@ -31,3 +32,23 @@ type DisconnectError string
 func (d DisconnectError) Error() string {
 	return string(d)
 }
+
+// DisconnectReason is the error of a connection the other end closed with a packet.Disconnect: the
+// packet's reason code and its message. A server that hides the disconnection screen sends no
+// message at all, and the code is then all there is to say why. It unwraps to the DisconnectError
+// with the message, so errors.As finds either.
+type DisconnectReason struct {
+	Code    int32
+	Message string
+}
+
+// Error returns the message, or the reason code when the packet had none.
+func (d *DisconnectReason) Error() string {
+	if d.Message != "" {
+		return d.Message
+	}
+	return fmt.Sprintf("disconnected by the server without a message (reason code %d)", d.Code)
+}
+
+// Unwrap returns the DisconnectError holding the message.
+func (d *DisconnectReason) Unwrap() error { return DisconnectError(d.Message) }

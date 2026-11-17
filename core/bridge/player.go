@@ -173,7 +173,7 @@ func serve(jp *jserver.Player) {
 	case res := <-dialed:
 		p.connecting.Store(false)
 		if res.err != nil {
-			p.log.Info("could not join the server", "err", res.err)
+			p.log.Info("could not join the server", "why", dialErrorText(res.err), "err", res.err)
 			refuse(jp, "Could not join the server: "+dialErrorText(res.err))
 			return
 		}
@@ -188,7 +188,7 @@ func serve(jp *jserver.Player) {
 			res := <-dialed
 			p.connecting.Store(false)
 			if res.err != nil {
-				p.log.Info("could not join the server", "err", res.err)
+				p.log.Info("could not join the server", "why", dialErrorText(res.err), "err", res.err)
 				p.java.Disconnect("Could not join the server: " + dialErrorText(res.err))
 				return
 			}
