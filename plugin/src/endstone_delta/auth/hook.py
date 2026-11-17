@@ -161,7 +161,7 @@ class IdentityHook:
         if self._shim is None:
             return False
         buf = ctypes.create_string_buffer(512)
-        candidates = [""] + sorted(str(p) for p in (self._dir / "auth" / "profiles").glob("*.json"))
+        candidates = [""] + sorted((str(p) for p in (self._dir / "auth" / "profiles").glob("*.json")), reverse=True)
         profile = None
         for cand in candidates:
             rc = self._shim.xf_self_check(cand.encode(), buf, len(buf))

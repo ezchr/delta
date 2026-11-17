@@ -813,3 +813,19 @@ What a Java client does by itself for a living mob, and cannot for one drawn wit
 - A changed core can be tried without installing it: a small main that imports `core/service` and
   calls `host.Start` with `{"listen": <another port>, "bedrock": <the server's RakNet address>,
   "options": {"account_mode": "offline"}}` runs the bridge as a normal process next to the server.
+
+## BDS 1.26.65.1 and the identity hook's libc++ (2026-11-17)
+
+- Endstone pins one BDS build per release: 0.11.15 runs 1.26.60.6, 0.11.16 runs 1.26.65.1
+  (1.26.61.1, 1.26.62.1 and 1.26.63.1 exist but no Endstone runs them).
+- The hook's call site in 1.26.65.1 is byte-identical to 1.26.60.6, moved by 0x4e0 (site 0x8cc3806,
+  helper 0x7407cd0); the shim finds it by signature, so the 1.26.60.6 profile already matched. The
+  1.26.65.1 profile is there so the log names the right build; profiles are tried newest first.
+- A host without `libc++.so.1` could not load the old shim ("cannot open shared object file"), so
+  hybrid/online mode had no stable XUIDs there. The shim is now built with zig (static libc++,
+  glibc 2.17): see THIRD_PARTY.md. A clang build with `-static-libstdc++` needed glibc 2.38
+  (Ubuntu 24.04's libc++.a uses the C23 strtol symbols), too new for Ubuntu 22.04 hosts.
+- The xuidforward smoke test (`build-shim.sh`) now fails its `stage(bad)` case: xuidforward's
+  default for require_self_signed_id_match became false on 2026-11-05. Delta passes 1 explicitly.
+- Tested: Endstone 0.11.16 + BDS 1.26.65.1, account_mode = hybrid, jbbot joined twice with the
+  same derived XUID.

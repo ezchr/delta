@@ -33,7 +33,7 @@ have to be regenerated as well (the generators are not part of this repository y
 ## Bundled native hook (online identity)
 
 `plugin/src/endstone_delta/auth/libxuidforward.so` and `auth/profiles/*.json` are the
-owner's **xuidforward** native shim and its BDS build profiles, bundled unchanged so Delta
+owner's **xuidforward** native shim and its BDS build profiles, bundled so Delta
 ships as one plugin. The shim patches BDS's login path to write a stable XUID for an accepted
 self-signed (loopback) login (see docs/LOGIN.md). `auth/login_body.py` is vendored from the same
 project (the Login-packet parser), with one addition: it also reads the `Nonce` claim that carries
@@ -41,3 +41,9 @@ Delta's per-start trust secret. `auth/beacon_claim.py` is vendored unchanged fro
 `auth/hook.py` is Delta's own code (load, self-check,
 install, and the loopback+secret trust gate). The bundled `.so` and profiles were checked for any
 of the owner's network names/paths and contain none (the shim carries only generic strings).
+
+The shim is built from the xuidforward source with libc++ linked in and against glibc 2.17
+(`zig c++ -target x86_64-linux-gnu.2.28 -std=c++20 -O2 -fPIC -shared ... -s`), so it loads on
+hosts without `libc++.so.1`. It needs only libc, libm, libpthread and libdl. Delta passes every
+hook setting explicitly when it installs the hook (`xf_install`), so the shim's own defaults do
+not apply.
