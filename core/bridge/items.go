@@ -26,6 +26,8 @@ type itemTable struct {
 	from  *Remote
 	names map[int32]string
 	ids   map[string]int32
+	// custom is what the Java client needs of the custom items (customitems.go).
+	custom map[int32]customItem
 }
 
 // items is the item table of the current connection (built on first use).
@@ -34,24 +36,51 @@ func (p *Player) items() *itemTable {
 	if w.itab != nil && w.itab.from == p.rem {
 		return w.itab
 	}
-	t := &itemTable{from: p.rem, names: map[int32]string{}, ids: map[string]int32{}}
+	t := &itemTable{from: p.rem, names: map[int32]string{}, ids: map[string]int32{}, custom: map[int32]customItem{}}
 	if p.rem != nil {
 		t.add(p.rem.gd.Items)
+		t.logCustom(p, p.rem.gd.Items)
 	}
 	w.itab = t
 	return t
+}
+
+// logCustom logs (debug) what the Java client gets of each custom item in entries.
+func (t *itemTable) logCustom(p *Player, entries []protocol.ItemEntry) {
+	n := 0
+	for _, e := range entries {
+		if !e.ComponentBased {
+			continue
+		}
+		n++
+		if c, ok := t.custom[int32(e.RuntimeID)]; ok {
+			p.log.Debug("custom item", "name", e.Name, "java", c.String())
+		}
+	}
+	if n > 0 {
+		p.log.Debug("custom items", "n", n, "withJavaComponents", len(t.custom))
+	}
 }
 
 func (t *itemTable) add(entries []protocol.ItemEntry) {
 	for _, e := range entries {
 		t.names[int32(e.RuntimeID)] = e.Name
 		t.ids[e.Name] = int32(e.RuntimeID)
+		if e.ComponentBased {
+			if c, ok := parseCustomItem(e.Data); ok {
+				t.custom[int32(e.RuntimeID)] = c
+			} else {
+				delete(t.custom, int32(e.RuntimeID))
+			}
+		}
 	}
 }
 
 func init() {
 	OnBedrock(packet.IDItemRegistry, func(p *Player, pk *packet.ItemRegistry) {
-		p.items().add(pk.Items)
+		t := p.items()
+		t.add(pk.Items)
+		t.logCustom(p, pk.Items)
 	})
 	// Entities (milestone 2) show items and use the held item through these hooks.
 	javaItemHook = func(p *Player, st protocol.ItemStack, js *jitem.Stack) bool {
@@ -177,6 +206,9 @@ func (p *Player) javaStack(st protocol.ItemStack, js *jitem.Stack) {
 		js.ItemName = jitem.Text{Text: prettyName(name)}
 		js.Add(jitem.CompItemName)
 		p.packItem(name, js) // packs.go: the server pack's name and model
+		if c, ok := p.items().custom[st.NetworkID]; ok {
+			c.apply(js) // customitems.go: durability, stack size, food, wearing
+		}
 	} else {
 		js.ID = id
 	}
@@ -195,9 +227,15 @@ func (p *Player) javaStack(st protocol.ItemStack, js *jitem.Stack) {
 	}
 	if dmg, ok := nbtNum(nbt["Damage"]); ok && dmg > 0 {
 		md := jitem.DefaultMaxDamage(js.ID)
+		if js.Has(jitem.CompMaxDamage) {
+			md = js.MaxDamage // a custom item's own durability (above)
+		}
 		if md <= 0 || int32(dmg) >= md {
 			js.MaxDamage = max(md, int32(dmg)+1)
 			js.Add(jitem.CompMaxDamage)
+			// Damageable items must not stack on Java (the client refuses the item otherwise).
+			js.MaxStackSize = 1
+			js.Add(jitem.CompMaxStackSize)
 		}
 		js.Damage = int32(dmg)
 		js.Add(jitem.CompDamage)

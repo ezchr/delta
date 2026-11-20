@@ -2,8 +2,8 @@
 
 **Delta plugin for Endstone: allows Java players to play on Endstone BDS servers.**
 
-> **Linux only.** Delta runs on Linux x86-64 servers (glibc 2.34 or newer, as on Ubuntu 22.04,
-> Debian 12 and later). Windows servers are not supported.
+> **Linux and Windows.** Delta runs on Linux x86-64 servers (glibc 2.34 or newer, as on Ubuntu
+> 22.04, Debian 12 and later) and Windows x64 servers (BDS 1.26.65.1, Endstone 0.11.16).
 
 Delta is one [Endstone](https://github.com/EndstoneMC/endstone) plugin. Drop the wheel into
 `plugins/`, start the server, and Java Edition players can join it next to Bedrock players. There
@@ -31,9 +31,12 @@ BDS, so commands, permissions, ops and other plugins work on them.
 
 ## Install
 
-1. Linux x86-64 server with Endstone 0.11 running BDS 1.26.60.6 (Endstone 0.11.15) or BDS
-   1.26.65.1 (Endstone 0.11.16). Both speak the Bedrock protocol Delta uses.
-2. Put `endstone_delta-<version>-py3-none-linux_x86_64.whl` in the server's `plugins/` folder.
+1. A Linux x86-64 or Windows x64 server with Endstone 0.11 running BDS 1.26.60.6 (Endstone
+   0.11.15, Linux) or BDS 1.26.65.1 (Endstone 0.11.16, Linux and Windows). Both speak the Bedrock
+   protocol Delta uses.
+2. Put the wheel for your system in the server's `plugins/` folder:
+   `endstone_delta-<version>-py3-none-linux_x86_64.whl` on Linux,
+   `endstone_delta-<version>-py3-none-win_amd64.whl` on Windows.
 3. Keep `online-mode=false` in `server.properties` (Endstone's default). Delta checks Java accounts
    itself; BDS's own online mode would refuse Java players.
 4. Start the server. Delta writes `plugins/delta/config.toml`; Java players join on port 25565 by

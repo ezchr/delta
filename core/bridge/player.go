@@ -242,8 +242,10 @@ func profileProperty(pr jserver.Profile, name string) string {
 	return ""
 }
 
-// firstDialWait is how long a login waits for its server before going to the waiting area.
-const firstDialWait = 8 * time.Second
+// firstDialWait is how long a login waits for its server before going to the waiting area. It stays
+// under the Java client's 30s no-packet timeout; a normal join takes a few seconds, so players
+// spawn straight into the world and only a server that is still starting shows the waiting area.
+const firstDialWait = 20 * time.Second
 
 // keep-alive timing, as vanilla.
 const (

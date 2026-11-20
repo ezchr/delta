@@ -238,6 +238,24 @@ func init() {
 			w.updateResult()
 		}
 	})
+	// BDS tells the client about an item it picked up with an InventoryTransaction whose container
+	// actions carry the slot's new item (just before TakeItemActor). Without this the Java client
+	// only saw the pickup at BDS's next full InventoryContent, seconds later.
+	OnBedrock(packet.IDInventoryTransaction, func(p *Player, pk *packet.InventoryTransaction) {
+		w := p.win
+		for _, a := range pk.Actions {
+			win, ok := a.WindowID.Value()
+			if a.SourceType != protocol.InventoryActionSourceContainer || !ok {
+				continue
+			}
+			k, ok := w.windowKey(uint32(int32(win)), int(a.InventorySlot), protocol.FullContainerName{})
+			if !ok {
+				continue
+			}
+			w.auth[k] = a.NewItem
+			w.sendSlot(k)
+		}
+	})
 	OnBedrock(packet.IDPlayerHotBar, func(p *Player, pk *packet.PlayerHotBar) {
 		if pk.WindowID != protocol.WindowIDInventory || !pk.SelectHotBarSlot || pk.SelectedHotBarSlot > 8 {
 			return

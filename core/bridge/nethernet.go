@@ -10,6 +10,7 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
+	"runtime"
 	"strings"
 	"sync"
 	"time"
@@ -75,9 +76,40 @@ func netherNetURL(addr string) string {
 var loopbackWebRTC = sync.OnceValue(func() *webrtc.API {
 	var s webrtc.SettingEngine
 	s.SetIncludeLoopbackCandidate(true)
-	s.SetIPFilter(func(ip net.IP) bool { return ip.IsLoopback() })
+	s.SetIPFilter(localCandidateIP)
 	s.SetNetworkTypes([]webrtc.NetworkType{webrtc.NetworkTypeUDP4, webrtc.NetworkTypeUDP6})
 	return webrtc.NewAPI(webrtc.WithSettingEngine(s))
+})
+
+// localCandidateIP keeps ICE on this machine. Linux BDS answers with loopback candidates, so loopback
+// alone is enough there. Windows BDS (libwebrtc) leaves loopback out and offers every adapter's
+// address, including VPN and virtual ones (Radmin, VirtualBox, Teredo) where a chosen pair can
+// stall, and Windows will not route from a loopback socket to those. So on Windows the one IPv4
+// address of the adapter that holds the default route is allowed too, and nothing else. Traffic to
+// it never leaves the host.
+func localCandidateIP(ip net.IP) bool {
+	if ip.IsLoopback() {
+		return true
+	}
+	if runtime.GOOS != "windows" {
+		return false
+	}
+	primary := primaryIPv4()
+	return primary != nil && primary.Equal(ip)
+}
+
+// primaryIPv4 is this machine's address on the default-route adapter. Connecting a UDP socket only
+// selects a route; no packet is sent.
+var primaryIPv4 = sync.OnceValue(func() net.IP {
+	c, err := net.Dial("udp4", "192.0.2.1:9") // TEST-NET-1: any routable address picks the default route
+	if err != nil {
+		return nil
+	}
+	defer c.Close()
+	if a, ok := c.LocalAddr().(*net.UDPAddr); ok && a.IP.To4() != nil && !a.IP.IsLoopback() {
+		return a.IP
+	}
+	return nil
 })
 
 // signalingHTTP is the HTTP client for NetherNet signaling: one connection per request, closed

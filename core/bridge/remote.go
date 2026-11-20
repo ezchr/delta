@@ -45,18 +45,22 @@ type Remote struct {
 	jpack *javaPack
 }
 
-// dialTimeout is how long connecting to the server may take.
-const dialTimeout = 25 * time.Second
+// dialTimeout is how long connecting to the server may take. A server with big add-ons (Cobblemon)
+// sends tens of MB of item, block and recipe data during the login; over NetherNet on Windows BDS
+// that alone has taken close to 25s, so the limit leaves plenty of room.
+const dialTimeout = 90 * time.Second
 
 // dialRemote connects to target (host:port, tcp:host:port) and spawns. It does not touch the
 // player's state and must be called without p.mu.
 func (p *Player) dialRemote(target string) (*Remote, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), dialTimeout)
 	defer cancel()
+	start := time.Now()
 	conn, err := p.dial(ctx, target)
 	if err != nil {
 		return nil, err
 	}
+	p.log.Debug("joined the server", "took", time.Since(start).Round(time.Millisecond))
 	if p.login != nil && p.login.TokenSource != nil {
 		p.rememberPlayFab(conn.IdentityData()) // clientdata.go
 	}

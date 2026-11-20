@@ -20,7 +20,7 @@ import (
 // Server corrections (CorrectPlayerMovePrediction) name the tick they apply to: the bridge keeps
 // the positions it sent per tick, so the correction is the offset between the server's position
 // and what was sent then. That offset is applied to the client's current position as a relative
-// player_position (velocity and look kept: no visible snap for small corrections), and to the
+// player_position (look kept, velocity set to the server's: see nudge), and to the
 // positions sent since, so a later correction of an already corrected tick does not apply twice.
 // Only big corrections (and the server's teleports, MovePlayer) put the client at an absolute
 // position.
@@ -355,10 +355,19 @@ func (p *Player) placeAt(pos, vel mgl64.Vec3, yaw, pitch float32) {
 	p.sendCentre(pos, false)
 }
 
-// nudge moves the client by off relative to where it is now, keeping its velocity and look.
-func (p *Player) nudge(off mgl64.Vec3) {
+// nudge moves the client by off relative to where it is now, keeping its look, and sets its
+// velocity to vel (the server's, from the correction).
+//
+// The velocity matters as much as the offset. Keeping the client's own velocity (as this once did)
+// meant that whenever the two simulations disagreed on the velocity - knockback applied a tick
+// apart, a jump off a corner the two collide with differently - the client moved straight back
+// off the corrected position, the server corrected again a few ticks later, and so on: a chain of
+// growing corrections that looked like teleporting. Bedrock's correction carries the server's
+// velocity for that tick (on the ground it is the resting -0.0784 the Java client also has), and
+// as the bridge runs next to the server the correction names (nearly) the current tick.
+func (p *Player) nudge(off, vel mgl64.Vec3) {
 	m := &p.mv
-	id := p.sendPosition(off, 0, 0, relX|relY|relZ|relYaw|relPitch|relDX|relDY|relDZ)
+	id := p.sendPositionVel(off, vel, 0, 0, relX|relY|relZ|relYaw|relPitch)
 	m.pending = append(m.pending, pendingTeleport{id: id, offset: off, tick: m.tick})
 	m.pos = m.pos.Add(off)
 	p.self.pos = m.pos
@@ -398,7 +407,7 @@ func (p *Player) correction(pk *packet.CorrectPlayerMovePrediction) {
 		p.placeAt(srv, vec64(pk.Delta), m.yaw, m.pitch)
 		return
 	}
-	p.nudge(off)
+	p.nudge(off, vec64(pk.Delta))
 	m.shiftHistory(pk.Tick, off)
 	m.lastPos = m.lastPos.Add(off)
 }
@@ -598,6 +607,10 @@ func (p *Player) sendInput() {
 	if sprinting && !m.wasSprinting {
 		flags.Set(packet.InputFlagStartSprinting)
 	} else if !sprinting && m.wasSprinting {
+		// A sprint the Java client ends against a block in the tick it jumps: BDS sometimes
+		// boosts that jump and sometimes not (no rule found in the traces, server sprint state
+		// included), so the client is left as it is and the correction (nudge: position and
+		// velocity) settles it in one step.
 		flags.Set(packet.InputFlagStopSprinting)
 	}
 	m.wasSprinting = sprinting
@@ -709,9 +722,25 @@ func (p *Player) sprintJumpVerdict(sprinting bool) {
 // displacement and velocity as they will be when it applies it, tpLag ticks from now (airborne:
 // friction 0.546 after the jump tick, 0.91 after that).
 func (p *Player) unboostJump(n uint64) {
+	p.jumpBoost(n, p.mv.sjYaw, -1)
+}
+
+// jumpBoost adds (sign 1) or takes back (sign -1) the sprint-jump boost of the jump in input n,
+// made looking at yaw, on the Java client: its position and velocity, the positions sent since,
+// and the client positions until it applies it.
+func (p *Player) jumpBoost(n uint64, yaw float32, sign float64) {
+	p.applyJumpBoost(n, jumpBoostVec(yaw).Mul(sign))
+}
+
+// jumpBoostVec is the sprint-jump boost along a look (Java's and Bedrock's: 0.2 blocks per tick).
+func jumpBoostVec(yaw float32) mgl64.Vec3 {
+	a := yaw * float32(math.Pi/180)
+	return mgl64.Vec3{-float64(float32(math.Sin(float64(a)))) * 0.2, 0, float64(float32(math.Cos(float64(a)))) * 0.2}
+}
+
+// applyJumpBoost adds boost b (signed) of the jump in input n to the Java client.
+func (p *Player) applyJumpBoost(n uint64, b mgl64.Vec3) {
 	m := &p.mv
-	a := m.sjYaw * float32(math.Pi/180)
-	b := mgl64.Vec3{-float64(float32(math.Sin(float64(a)))) * 0.2, 0, float64(float32(math.Cos(float64(a)))) * 0.2}
 	// extra(t): the boost's displacement after tick t; vel: its velocity after it.
 	extra := func(t uint64) (disp, vel mgl64.Vec3) {
 		disp, vel = b, b.Mul(0.546)
@@ -724,20 +753,20 @@ func (p *Player) unboostJump(n uint64) {
 	for i := range m.history {
 		if e := &m.history[i]; e.tick >= n && e.tick <= m.tick {
 			d, _ := extra(e.tick)
-			e.pos = e.pos.Sub(d)
+			e.pos = e.pos.Add(d)
 		}
 	}
 	now, _ := extra(m.tick)
-	m.pos, m.lastPos = m.pos.Sub(now), m.lastPos.Sub(now)
+	m.pos, m.lastPos = m.pos.Add(now), m.lastPos.Add(now)
 	k := max(1, uint64(math.Round(m.tpLag)))
 	disp, vel := extra(m.tick + k - 1)
-	id := p.sendPositionVel(disp.Mul(-1), vel.Mul(-1), 0, 0, relX|relY|relZ|relYaw|relPitch|relDX|relDY|relDZ)
-	// Client positions until it applies it: without the boost's displacement.
-	m.pending = append(m.pending, pendingTeleport{id: id, offset: disp.Mul(-1), tick: m.tick})
+	id := p.sendPositionVel(disp, vel, 0, 0, relX|relY|relZ|relYaw|relPitch|relDX|relDY|relDZ)
+	// Client positions until it applies it: with the boost's displacement.
+	m.pending = append(m.pending, pendingTeleport{id: id, offset: disp, tick: m.tick})
 	p.self.pos = m.pos
 	m.unboosts++
 	if debugMove {
-		p.log.Info("MV sprint jump boost taken back", "jumpTick", n, "tick", m.tick, "lag", k, "teleport", disp.Mul(-1), "velocity", vel.Mul(-1))
+		p.log.Info("MV sprint jump boost changed", "boost", b, "jumpTick", n, "tick", m.tick, "lag", k, "teleport", disp, "velocity", vel)
 	}
 }
 

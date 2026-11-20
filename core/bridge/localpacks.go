@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/sandertv/gophertunnel/minecraft"
@@ -165,6 +166,39 @@ func stripJSONComments(b []byte) []byte {
 		out = out[3:]
 	}
 	return out
+}
+
+// prewarmPacks reads the world add-on packs (worlds/*/resource_packs) in the background when the
+// bridge starts. A pack kept as a folder is zipped in memory on first read, which for a big add-on
+// (Cobblemon's resource pack is ~280 MB) takes tens of seconds; done inside the first login, it
+// pushed that login past its time limit. The server's own vanilla packs are never sent to a
+// client, so they are left alone.
+func prewarmPacks() {
+	c, ok := packCache().(*localPackCache)
+	if !ok {
+		return
+	}
+	go func() {
+		c.index()
+		worlds := filepath.Join(c.root, "worlds") + string(filepath.Separator)
+		start, n := time.Now(), 0
+		for k, p := range c.paths {
+			if !strings.HasPrefix(p, worlds) {
+				continue
+			}
+			id, ver, _ := strings.Cut(k, "_")
+			u, err := uuid.Parse(id)
+			if err != nil {
+				continue
+			}
+			if _, err := c.Load(context.Background(), minecraft.ResourcePackCacheKey{UUID: u, Version: ver}); err == nil {
+				n++
+			}
+		}
+		if cfg.Log != nil && n > 0 {
+			cfg.Log.Info("world resource packs ready for Java players", "packs", n, "took", time.Since(start).Round(time.Millisecond))
+		}
+	}()
 }
 
 func (c *localPackCache) Load(ctx context.Context, key minecraft.ResourcePackCacheKey) (*resource.Pack, error) {

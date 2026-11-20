@@ -85,6 +85,7 @@ func Run(c Config, l *jserver.Listener) {
 		cfg.ViewDistance = 10
 	}
 	resetPackConfig()
+	prewarmPacks()
 	debugChunks = option("debug_chunks", "") == "1"
 	debugPackets = option("debug_packets", "") != ""
 	debugAnim = option("debug_anim", "") != ""
