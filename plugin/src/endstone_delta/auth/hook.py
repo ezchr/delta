@@ -23,6 +23,7 @@ identity is disabled with a clear log line (offline identity still works); BDS i
 
 import ctypes
 import hmac
+import sys
 import ipaddress
 from pathlib import Path
 
@@ -128,7 +129,7 @@ class IdentityHook:
         return self._installed
 
     def load(self) -> bool:
-        so = self._dir / "auth" / "libxuidforward.so"
+        so = self._dir / "auth" / ("libxuidforward.dll" if sys.platform == "win32" else "libxuidforward.so")
         if not so.exists():
             self._log.error(f"online identity: native hook missing at {so} - online identity unavailable")
             return False
