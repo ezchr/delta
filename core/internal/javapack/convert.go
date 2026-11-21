@@ -19,7 +19,7 @@ import (
 )
 
 // Version changes when the converter's output changes (part of the conversion cache key).
-const Version = 9
+const Version = 10
 
 // Java 26.3's resource pack format (version.json pack_version.resource_major/minor); 26.2 clients
 // (88) are in the range too.
@@ -101,6 +101,9 @@ type Result struct {
 	// HudPlaces is where the pack draws each of HudPanels (hudplace.go): at a side (a sidebar),
 	// at the top (boss bar lines) or at the bottom (the action bar).
 	HudPlaces map[string]HudPlace
+	// HudSlots are the vanilla title and action bar when a pack moves them to a side as a
+	// whole (hudslots.go): every such text is a sidebar.
+	HudSlots HudSlots
 	// FormScreens are the screens a pack draws for server forms (ui/server_form.json): what the
 	// bridge needs to show such a form as text instead of the packed data it carries.
 	FormScreens []FormScreen

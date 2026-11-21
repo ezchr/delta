@@ -100,7 +100,7 @@ func (p *Player) javaCommand(r *wireReader) error {
 		p.BridgeMessage("Not on the server yet.")
 		return nil
 	}
-	p.runServerCommand(line)
+	p.runServerCommand(ampColours(line))
 	return nil
 }
 

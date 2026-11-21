@@ -63,6 +63,11 @@ type hudLine struct {
 
 type hudPanelState struct {
 	panels map[string][]string // the lines of each panel marker's last title
+	// expire is the ticks left of a panel that is gone when Bedrock's text would be
+	// (hudslot.go); a panel not in it stays until the server replaces it.
+	expire map[string]int
+	// titleTicks is how long the server has a title shown (SetDurations), 0: Bedrock's own.
+	titleTicks int
 
 	// The sidebar: hudObjective as the client has it.
 	on    bool      // the objective is made and in the sidebar
@@ -405,6 +410,7 @@ func (p *Player) serverActionBar(s string) {
 // server takes or leaves their place.
 func hudTick(p *Player) {
 	st := &p.hudPanel
+	slotTick(p)
 	if st.realWait > 0 {
 		if st.realWait--; st.realWait == 0 && len(st.panels) > 0 {
 			p.drawHudPanel() // the bottom panels are back in the bar

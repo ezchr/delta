@@ -329,6 +329,7 @@ func (p *Player) javaPackFor(conn *minecraft.Conn, gd minecraft.GameData, pal *b
 		res.HudMarkers, res.HudPanels = javapack.HudOf(in.Packs)
 		var places []string
 		res.HudPlaces = map[string]javapack.HudPlace{}
+		res.HudSlots = javapack.HudSlotsOf(in.Packs)
 		for _, hp := range javapack.HudPanelsOf(in.Packs) {
 			res.HudPlaces[hp.Marker] = hp.Place
 			places = append(places, hp.Marker+" "+hp.Place.String())
@@ -371,6 +372,7 @@ func (p *Player) javaPackFor(conn *minecraft.Conn, gd minecraft.GameData, pal *b
 		go prunePacks(p.log)
 	}
 	p.hudMarkers, p.hudPanels, p.hudPlaces = b.res.HudMarkers, b.res.HudPanels, b.res.HudPlaces
+	p.hudSlots = b.res.HudSlots
 	p.formScreens = b.res.FormScreens
 	if b.res.Empty() {
 		return nil

@@ -35,7 +35,9 @@ type Player struct {
 	// hudPlaces is where the pack draws each of them (javapack.Result.HudPlaces): a sidebar,
 	// boss bar lines or the action bar.
 	hudPlaces map[string]javapack.HudPlace
-	hudPanel  hudPanelState
+	// hudSlots: the pack shows every title or action bar text as a sidebar (hudslot.go).
+	hudSlots javapack.HudSlots
+	hudPanel hudPanelState
 	// formScreens are the screens that pack draws for forms (javapack.Result.FormScreens).
 	formScreens []javapack.FormScreen
 

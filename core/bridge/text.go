@@ -57,7 +57,7 @@ func init() {
 		p.rem.write(&packet.Text{
 			TextType:   packet.TextTypeChat,
 			SourceName: p.rem.conn.IdentityData().DisplayName,
-			Message:    msg,
+			Message:    ampColours(msg),
 			XUID:       p.rem.conn.IdentityData().XUID,
 		})
 		return nil
@@ -121,6 +121,9 @@ func (p *Player) bedrockTitle(pk *packet.SetTitle) {
 			return
 		}
 	}
+	if p.slotTitle(pk, t) {
+		return
+	}
 	switch pk.ActionType {
 	case packet.TitleActionClear:
 		p.sendClearTitles(false)
@@ -150,4 +153,36 @@ func (p *Player) runServerCommand(line string) {
 		CommandOrigin: protocol.CommandOrigin{Origin: protocol.CommandOriginPlayer, UUID: uuid.New()},
 		Version:       commandVersion,
 	})
+}
+
+// ampColours lets a Java player write colour and format codes: a Java client does not let "§"
+// be typed (it takes it out of chat and commands), a Bedrock one does, so "&" followed by a
+// code (Bedrock's: "&6", "&l", "&r", the material colours "&g" to "&v") is sent as "§" and
+// the code, as Java servers' plugins take it.
+// "&&" is a plain "&". Option java_colour_codes = "off" sends what was typed as it is.
+var ampColoursOn = true
+
+func ampColours(s string) string {
+	if !ampColoursOn || !strings.Contains(s, "&") {
+		return s
+	}
+	rs := []rune(s)
+	var b strings.Builder
+	for i := 0; i < len(rs); i++ {
+		if rs[i] == '&' && i+1 < len(rs) {
+			if rs[i+1] == '&' {
+				b.WriteRune('&')
+				i++
+				continue
+			}
+			if strings.ContainsRune("0123456789abcdefghijklmnopqrstuvABCDEFGHIJKLMNOPQRSTUV", rs[i+1]) {
+				b.WriteRune('§')
+				b.WriteRune(rs[i+1])
+				i++
+				continue
+			}
+		}
+		b.WriteRune(rs[i])
+	}
+	return b.String()
 }
