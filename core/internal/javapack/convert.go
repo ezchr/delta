@@ -19,7 +19,7 @@ import (
 )
 
 // Version changes when the converter's output changes (part of the conversion cache key).
-const Version = 7
+const Version = 9
 
 // Java 26.3's resource pack format (version.json pack_version.resource_major/minor); 26.2 clients
 // (88) are in the range too.
@@ -95,6 +95,12 @@ type Result struct {
 	// HudMarkers are the texts a pack's own HUD (ui/*.json) looks for in the title, subtitle or
 	// action bar: a title holding one is data for that HUD, not text for the player.
 	HudMarkers []string
+	// HudPanels are the HUD markers whose title the pack writes on screen (less the marker): a
+	// sidebar or panel made of a title, which the bridge shows as a Java sidebar.
+	HudPanels []string
+	// HudPlaces is where the pack draws each of HudPanels (hudplace.go): at a side (a sidebar),
+	// at the top (boss bar lines) or at the bottom (the action bar).
+	HudPlaces map[string]HudPlace
 	// FormScreens are the screens a pack draws for server forms (ui/server_form.json): what the
 	// bridge needs to show such a form as text instead of the packed data it carries.
 	FormScreens []FormScreen
@@ -117,6 +123,7 @@ type Stats struct {
 	// The packs' textures with a glyph in the icon font, the glyphs (like pictures share one)
 	// and the size of their sheets.
 	FormIcons, IconGlyphs, IconBytes int
+	Glyphs                           int // characters of the packs' glyph sheets in Java's default font
 	EntitiesTook                     time.Duration
 	Missing                          []string // what could not be converted (first few)
 }
@@ -130,7 +137,7 @@ func (s *Stats) miss(format string, a ...any) {
 // Empty reports whether the conversion made nothing worth sending.
 func (r *Result) Empty() bool {
 	s := r.Stats
-	return s.Overrides+s.Items+s.Blocks+s.Entities+s.StandIns+s.LangKeys+s.FormIcons == 0
+	return s.Overrides+s.Items+s.Blocks+s.Entities+s.StandIns+s.LangKeys+s.FormIcons+s.Glyphs == 0
 }
 
 type builder struct {
@@ -194,6 +201,7 @@ func Convert(in *Input) (*Result, error) {
 	if in.FormIcons {
 		b.formIcons()
 	}
+	b.glyphSheets()
 	if len(b.lang) > 0 {
 		b.json("assets/"+Namespace+"/lang/en_us.json", b.lang)
 		b.res.Stats.LangKeys = len(b.lang)
@@ -568,29 +576,4 @@ func (b *builder) readBlocksJSON(s *Source) {
 			b.blocksTex[name] = faces
 		}
 	}
-}
-
-// hudMarker finds the texts a JSON UI file takes out of the HUD's title strings, the way packs test
-// "does the title hold my marker": (#hud_title_text_string - 'cbm:party').
-var hudMarker = regexp.MustCompile(`#hud_(?:title|subtitle|actionbar)_text_string\s*-\s*'([^']{3,64})'`)
-
-// HudMarkersOf lists the HUD markers of the packs' ui files, sorted.
-func HudMarkersOf(packs []*Source) []string {
-	seen := map[string]bool{}
-	for _, s := range packs {
-		for name, b := range s.files {
-			if !strings.HasPrefix(name, "ui/") || !strings.HasSuffix(name, ".json") {
-				continue
-			}
-			for _, m := range hudMarker.FindAllSubmatch(b, -1) {
-				seen[string(m[1])] = true
-			}
-		}
-	}
-	out := make([]string, 0, len(seen))
-	for m := range seen {
-		out = append(out, m)
-	}
-	sort.Strings(out)
-	return out
 }

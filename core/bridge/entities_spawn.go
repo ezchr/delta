@@ -316,6 +316,8 @@ func (p *Player) showEntity(e *entity) {
 	}
 	if e.t.kind&entPlayer != 0 {
 		p.updateNameTag(e)
+	} else {
+		p.updateMobTag(e)
 	}
 	if e.vehicle != 0 {
 		if v := p.entityByUnique(e.vehicle); v != nil {
@@ -359,6 +361,8 @@ func (p *Player) removeEntity(rid uint64, poof bool) {
 	if e.t.kind&entPlayer != 0 {
 		p.dropNameTag(e)
 		p.playerGone(e)
+	} else if !p.modelEntity(e) {
+		p.removeTagDisplay(e, false) // a model's hitbox goes with dropModelEntity
 	}
 }
 

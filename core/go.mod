@@ -5,7 +5,7 @@ go 1.26.7
 require (
 	github.com/df-mc/dragonfly v0.11.5
 	github.com/df-mc/go-nethernet v1.0.27
-	github.com/ezchr/go-mcjava v0.1.2
+	github.com/ezchr/go-mcjava v0.1.3
 	github.com/go-gl/mathgl v1.2.0
 	github.com/google/uuid v1.6.0
 	github.com/pion/webrtc/v4 v4.2.26

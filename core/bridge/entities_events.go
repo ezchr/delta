@@ -260,6 +260,10 @@ func (p *Player) actorEvent(pk *packet.ActorEvent) {
 			p.sendHurt(SelfEntityID) // the camera shake and hurt sound
 		case packet.ActorEventTalismanActivate:
 			p.sendEntityEvent(SelfEntityID, jevTotem)
+		case packet.ActorEventDeath:
+			// The killing hit comes as Death, not Hurt: without this the last hit was silent.
+			// Java's entity event 3 plays the player's death sound, as a vanilla server sends it.
+			p.sendEntityEvent(SelfEntityID, jevDeath)
 		}
 		return
 	}

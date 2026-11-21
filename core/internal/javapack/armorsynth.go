@@ -126,14 +126,22 @@ func partCubes(g *geometry, part stdPart) (geoCube, []partCube) {
 	for i := range g.bones {
 		byName[strings.ToLower(g.bones[i].Name)] = &g.bones[i]
 	}
+	// A part turned a little (a shoulder pad tilted 5 degrees) is drawn as if straight: an
+	// add-on's armour often has nothing on the arm but such parts (the sleeve cube is see-through),
+	// and leaving them out left Java's arms bare. One turned further is left out.
+	const slight = 12.0
 	turned := func(b *geoBone) bool {
+		var sum [3]float64
 		for d := 0; b != nil && d < 64; d++ {
-			if b.Rotation != ([3]float64{}) {
-				return true
+			for a := 0; a < 3; a++ {
+				sum[a] += b.Rotation[a]
 			}
 			b = byName[strings.ToLower(b.Parent)]
 		}
-		return false
+		return math.Abs(sum[0]) > slight || math.Abs(sum[1]) > slight || math.Abs(sum[2]) > slight
+	}
+	cubeTurned := func(r [3]float64) bool {
+		return math.Abs(r[0]) > slight || math.Abs(r[1]) > slight || math.Abs(r[2]) > slight
 	}
 	for _, alt := range part.alts {
 		var out []partCube
@@ -143,7 +151,7 @@ func partCubes(g *geometry, part stdPart) (geoCube, []partCube) {
 				continue
 			}
 			for _, cb := range bn.Cubes {
-				if cb.Rotation != ([3]float64{}) || len(cb.UV) == 0 {
+				if cubeTurned(cb.Rotation) || len(cb.UV) == 0 {
 					continue
 				}
 				in, cov := true, 1.0

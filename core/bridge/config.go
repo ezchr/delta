@@ -117,6 +117,7 @@ func Run(c Config, l *jserver.Listener) {
 		animFullMobs = n
 	}
 	formIconsOn = !strings.EqualFold(strings.TrimSpace(option("form_icons", "on")), "off")
+	loadFormLayouts()
 	captureDir = option("capture_dir", "")
 	running.mu.Lock()
 	running.l = l

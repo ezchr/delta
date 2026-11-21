@@ -29,6 +29,13 @@ type Player struct {
 	// hudMarkers are the current server pack's HUD markers (javapack.Result.HudMarkers): titles
 	// holding one are not shown. Set when the server is dialled.
 	hudMarkers []string
+	// hudPanels are those whose text the pack writes on screen (javapack.Result.HudPanels):
+	// shown as a sidebar (hudpanel.go).
+	hudPanels []string
+	// hudPlaces is where the pack draws each of them (javapack.Result.HudPlaces): a sidebar,
+	// boss bar lines or the action bar.
+	hudPlaces map[string]javapack.HudPlace
+	hudPanel  hudPanelState
 	// formScreens are the screens that pack draws for forms (javapack.Result.FormScreens).
 	formScreens []javapack.FormScreen
 

@@ -260,6 +260,9 @@ func init() {
 			return false // another entity (entities, milestone 2)
 		}
 		// Knockback, explosions, launch pads: the client moves itself with the server's velocity.
+		if p.catchUpMotion(vec64(pk.Velocity), pk.Tick) {
+			return true
+		}
 		w := p.pk()
 		w.VarInt(SelfEntityID)
 		w.LpVec3(float64(pk.Velocity[0]), float64(pk.Velocity[1]), float64(pk.Velocity[2]))
@@ -373,6 +376,82 @@ func (p *Player) nudge(off, vel mgl64.Vec3) {
 	p.self.pos = m.pos
 }
 
+// maxMotionCatchUp is how many input ticks a motion may name before the current one and still be
+// caught up (catchUpMotion); one further back is left to the server's correction.
+const maxMotionCatchUp = 4
+
+// catchUpMotion gives the Java client a velocity the server set (SetActorMotion: knockback) as
+// of the tick the server set it, not as of when it arrives. The motion names input tick t: BDS
+// moves the player with it from input t+1 on, but by the time it arrives the bridge has sent the
+// inputs up to its own tick, made without it. The Java client then started the arc a tick or two
+// late from where its old velocity had taken it, and the two arcs drifted apart as they curved:
+// small at first (under BDS's tolerance), half a block lower on the server by the fall, where it
+// corrected the player in mid-air; when the old velocity was a fall, at once (0.7-1.2 blocks).
+// A motion that names the current tick came in time and was never corrected.
+//
+// So the missed ticks are made up for: the client is moved by what the motion would have moved
+// it in those ticks less what its own velocity did, and gets the velocity the motion has after
+// them (drag and gravity as both games have them in the air, ground friction on a first tick on
+// the ground). The positions sent for those ticks are moved by as much, so a correction already
+// on its way finds them where the server has them. false: nothing to catch up (send the velocity
+// as it is).
+func (p *Player) catchUpMotion(vel mgl64.Vec3, t uint64) bool {
+	m := &p.mv
+	if t == 0 || t >= m.tick || m.tick-t > maxMotionCatchUp || p.self.flying || p.self.dead || m.held != nil || len(m.pending) > 0 {
+		if debugMove {
+			p.log.Info("MV motion", "vel", vel, "tick", t, "ourTick", m.tick, "caughtUp", false)
+		}
+		return false
+	}
+	from, ok1 := m.sentAt(t)
+	to, ok2 := m.sentAt(m.tick)
+	if !ok1 || !ok2 {
+		return false
+	}
+	// Where the server has the player at each missed tick, against what was sent for it: a
+	// correction may still come for one of them (BDS corrects a tick in between too), and has to
+	// find that tick's own share, not the whole.
+	var moved mgl64.Vec3
+	v := vel
+	share := map[uint64]mgl64.Vec3{}
+	for i := uint64(0); i < m.tick-t; i++ {
+		moved = moved.Add(v)
+		f := 0.91 // air
+		if i == 0 && m.onGround {
+			f = 0.6 * 0.91 // the block's slipperiness on a first tick on the ground
+		}
+		v = mgl64.Vec3{v[0] * f, (v[1] - 0.08) * 0.98, v[2] * f}
+		if at, ok := m.sentAt(t + i + 1); ok {
+			share[t+i+1] = moved.Sub(at.Sub(from))
+		}
+	}
+	off := moved.Sub(to.Sub(from))
+	if m.onGround {
+		// The Java client takes its next tick as one on the ground still (its on-ground flag is
+		// the last move's: the nudge does not change it), so it slows the horizontal velocity
+		// by the ground's 0.6*0.91 instead of the air's 0.91, and fell 0.35 blocks short of the
+		// server on landing. It gets a velocity that comes out right after that slowing, and
+		// the step that is longer by as much is taken off the nudge.
+		u := mgl64.Vec3{v[0] / 0.6, v[1], v[2] / 0.6}
+		off = off.Sub(mgl64.Vec3{u[0] - v[0], 0, u[2] - v[2]})
+		v = u
+	}
+	if off.Len() > 2 {
+		return false // not a plain knockback arc: the server's correction settles it
+	}
+	if debugMove || off.Len() > 0.05 {
+		p.log.Debug("own motion caught up", "vel", vel, "tick", t, "ourTick", m.tick, "off", off, "velNow", v)
+	}
+	p.nudge(off, v)
+	for i := range m.history {
+		if e := &m.history[i]; e.tick > t {
+			e.pos = e.pos.Add(share[e.tick])
+		}
+	}
+	m.lastPos = m.lastPos.Add(off)
+	return true
+}
+
 // correction applies a CorrectPlayerMovePrediction.
 func (p *Player) correction(pk *packet.CorrectPlayerMovePrediction) {
 	m := &p.mv
@@ -384,6 +463,11 @@ func (p *Player) correction(pk *packet.CorrectPlayerMovePrediction) {
 		return
 	}
 	if p.sleepCorrection(vec64(pk.Position), vec64(pk.Delta)) {
+		return
+	}
+	if p.self.dead {
+		// BDS keeps correcting a dead player to where it died (it no longer simulates it):
+		// the Java client's body falls on, and nothing is to be done until the respawn.
 		return
 	}
 	srv := vec64(pk.Position).Sub(mgl64.Vec3{0, eyeHeight, 0})

@@ -326,13 +326,20 @@ func (p *Player) javaPackFor(conn *minecraft.Conn, gd minecraft.GameData, pal *b
 			p.log.Warn("resource pack conversion failed", "err", err)
 			return nil
 		}
-		res.HudMarkers = javapack.HudMarkersOf(in.Packs)
+		res.HudMarkers, res.HudPanels = javapack.HudOf(in.Packs)
+		var places []string
+		res.HudPlaces = map[string]javapack.HudPlace{}
+		for _, hp := range javapack.HudPanelsOf(in.Packs) {
+			res.HudPlaces[hp.Marker] = hp.Place
+			places = append(places, hp.Marker+" "+hp.Place.String())
+		}
 		res.FormScreens = javapack.FormScreensOf(in.Packs)
 		if len(res.FormScreens) > 0 {
 			p.log.Info("forms the pack draws as its own screens are shown as text", "screens", len(res.FormScreens))
 		}
 		if len(res.HudMarkers) > 0 {
-			p.log.Info("titles that are data for the pack's own HUD are not shown", "markers", strings.Join(res.HudMarkers, ", "))
+			p.log.Info("titles that are data for the pack's own HUD are not shown", "markers", strings.Join(res.HudMarkers, ", "),
+				"panels", strings.Join(places, ", "))
 		}
 		b = &packBuild{res: res, sha: res.SHA1, id: serverPackID,
 			slots: in.Slots, state: state, took: time.Since(start)}
@@ -344,7 +351,7 @@ func (p *Player) javaPackFor(conn *minecraft.Conn, gd minecraft.GameData, pal *b
 		}
 		st := res.Stats
 		p.log.Info("converted resource packs", "packs", strings.Join(names, ", "), "sha1", res.SHA1, "bytes", len(res.Zip),
-			"overrides", st.Overrides, "items", st.Items, "armour", st.Equipment, "held3d", st.Held, "blocks", st.Blocks, "entities", st.Entities, "standins", st.StandIns, "animated", st.Animated, "parts", st.Parts, "full_parts", st.FullParts, "lang", st.LangKeys, "form_icons", st.FormIcons, "icon_bytes", st.IconBytes,
+			"overrides", st.Overrides, "items", st.Items, "armour", st.Equipment, "held3d", st.Held, "blocks", st.Blocks, "entities", st.Entities, "standins", st.StandIns, "animated", st.Animated, "parts", st.Parts, "full_parts", st.FullParts, "lang", st.LangKeys, "form_icons", st.FormIcons, "icon_bytes", st.IconBytes, "glyphs", st.Glyphs,
 			"took", b.took.Round(time.Millisecond))
 		for _, m := range st.Missing {
 			p.log.Info("resource pack conversion: not converted", "what", m)
@@ -363,7 +370,7 @@ func (p *Player) javaPackFor(conn *minecraft.Conn, gd minecraft.GameData, pal *b
 		buildMu.Unlock()
 		go prunePacks(p.log)
 	}
-	p.hudMarkers = b.res.HudMarkers
+	p.hudMarkers, p.hudPanels, p.hudPlaces = b.res.HudMarkers, b.res.HudPanels, b.res.HudPlaces
 	p.formScreens = b.res.FormScreens
 	if b.res.Empty() {
 		return nil

@@ -49,8 +49,8 @@ func TestBookContent(t *testing.T) {
 	}
 }
 
-// TestBookForOlderClient: a 26.2 client gets the book's content too (the item package leaves raw
-// components out for it), between the components set and the ones removed.
+// TestBookForOlderClient: a 26.2 client gets the book's content too, once: the item package
+// writes a raw component in that client's form (go-mcjava after v0.1.2).
 func TestBookForOlderClient(t *testing.T) {
 	var js jitem.Stack
 	js.Reset()
@@ -68,20 +68,14 @@ func TestBookForOlderClient(t *testing.T) {
 	if !bytes.Equal(want.B, got.B) {
 		t.Fatal("the newest version's stack was changed")
 	}
-	// 26.2: the item package's stack has one component, ours two, the second the book's.
-	var lib, old wire.Writer
-	js.EncodeFor(&lib, jitem.For(version.V776))
+	// 26.2: two components, the name and the book's content (the same bytes in both versions,
+	// under 26.2's id), and the one removed.
+	var old wire.Writer
 	encodeStack(&old, &js, version.V776)
 	if js.Removed != removed {
 		t.Fatal("the stack's removed components were changed")
 	}
-	lr, r := wire.NewReader(lib.B), wire.NewReader(old.B)
-	lr.VarInt()
-	lr.VarInt()
-	if n, nr := lr.VarInt(), lr.VarInt(); n != 1 || nr != 1 {
-		t.Fatalf("the item package wrote %d components, %d removed", n, nr)
-	}
-	libRest := lr.Rest()
+	r := wire.NewReader(old.B)
 	c := r.VarInt()
 	r.VarInt()
 	if n, nr := r.VarInt(), r.VarInt(); c != 1 || n != 2 || nr != 1 {
@@ -90,11 +84,15 @@ func TestBookForOlderClient(t *testing.T) {
 	var book wire.Writer
 	book.VarInt(version.V776.BuiltinID("minecraft:data_component_type", "minecraft:written_book_content"))
 	book.Raw(js.Raw[0].Data)
-	rest := r.Rest()
-	// What the item package wrote, with the book before its last byte (the removed component).
-	wantRest := append(append(append([]byte(nil), libRest[:len(libRest)-1]...), book.B...), libRest[len(libRest)-1])
-	if !bytes.Equal(rest, wantRest) {
-		t.Fatalf("stack for 26.2:\n%x\nwant\n%x", rest, wantRest)
+	if rest := r.Rest(); bytes.Count(rest, book.B) != 1 {
+		t.Fatalf("stack for 26.2 has the book's content %d times:\n%x", bytes.Count(rest, book.B), rest)
+	}
+	// And it reads back as the stack it was.
+	var back jitem.Stack
+	br := wire.NewReader(old.B)
+	back.DecodeFor(br, jitem.For(version.V776))
+	if br.Err != nil || br.Len() != 0 || len(back.Raw) != 1 || back.Raw[0].Type != jitem.CompWrittenBookContent || !bytes.Equal(back.Raw[0].Data, js.Raw[0].Data) {
+		t.Fatalf("26.2 stack read back: %v, raw %+v", br.Err, back.Raw)
 	}
 }
 

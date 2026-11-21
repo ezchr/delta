@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/google/uuid"
@@ -27,7 +28,17 @@ type localPackCache struct {
 	paths map[string]string // "uuid_version" -> folder or archive
 
 	mu    sync.Mutex
-	packs map[string]*resource.Pack // read so far
+	packs map[string]*packLoad // read or being read
+}
+
+// packLoad is one pack read from the server's folders: done is closed once pk or err is set.
+// Each pack is read on its own (a folder is zipped: seconds for a large add-on), so a login does
+// not wait behind the start's read of all the others (it once did, for 97 s on a cold disk, and
+// timed out a second before its pack was its turn), and two that want the same pack read it once.
+type packLoad struct {
+	done chan struct{}
+	pk   *resource.Pack
+	err  error
 }
 
 var (
@@ -49,7 +60,7 @@ func serverPackCache(dir minecraft.DirResourcePackCache) minecraft.ResourcePackC
 		if _, err := os.Stat(filepath.Join(root, "resource_packs")); err != nil {
 			return
 		}
-		localCache = &localPackCache{dir: dir, packs: map[string]*resource.Pack{}, paths: map[string]string{}}
+		localCache = &localPackCache{dir: dir, packs: map[string]*packLoad{}, paths: map[string]string{}}
 		localCache.root = root
 	})
 	if localCache == nil {
@@ -99,7 +110,9 @@ func (c *localPackCache) index() {
 					if pk, err := resource.ReadPath(p); err == nil {
 						k := pk.UUID().String() + "_" + pk.Version()
 						c.paths[k] = p
-						c.packs[k] = pk
+						done := make(chan struct{})
+						close(done)
+						c.packs[k] = &packLoad{done: done, pk: pk}
 					}
 				}
 			}
@@ -181,7 +194,10 @@ func prewarmPacks() {
 	go func() {
 		c.index()
 		worlds := filepath.Join(c.root, "worlds") + string(filepath.Separator)
-		start, n := time.Now(), 0
+		start := time.Now()
+		var n atomic.Int32
+		var wg sync.WaitGroup
+		sem := make(chan struct{}, 4) // a few at a time: the server is starting too
 		for k, p := range c.paths {
 			if !strings.HasPrefix(p, worlds) {
 				continue
@@ -191,12 +207,18 @@ func prewarmPacks() {
 			if err != nil {
 				continue
 			}
-			if _, err := c.Load(context.Background(), minecraft.ResourcePackCacheKey{UUID: u, Version: ver}); err == nil {
-				n++
-			}
+			wg.Add(1)
+			sem <- struct{}{}
+			go func() {
+				defer func() { <-sem; wg.Done() }()
+				if _, err := c.Load(context.Background(), minecraft.ResourcePackCacheKey{UUID: u, Version: ver}); err == nil {
+					n.Add(1)
+				}
+			}()
 		}
-		if cfg.Log != nil && n > 0 {
-			cfg.Log.Info("world resource packs ready for Java players", "packs", n, "took", time.Since(start).Round(time.Millisecond))
+		wg.Wait()
+		if cfg.Log != nil && n.Load() > 0 {
+			cfg.Log.Info("world resource packs ready for Java players", "packs", n.Load(), "took", time.Since(start).Round(time.Millisecond))
 		}
 	}()
 }
@@ -204,25 +226,36 @@ func prewarmPacks() {
 func (c *localPackCache) Load(ctx context.Context, key minecraft.ResourcePackCacheKey) (*resource.Pack, error) {
 	c.index()
 	k := strings.ToLower(key.UUID.String()) + "_" + key.Version
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	if pk, ok := c.packs[k]; ok {
-		return pk, nil
+	p, ok := c.paths[k]
+	if !ok {
+		return c.dir.Load(ctx, key)
 	}
-	if p, ok := c.paths[k]; ok {
-		pk, err := resource.ReadPath(p)
-		if err != nil {
+	c.mu.Lock()
+	l, reading := c.packs[k]
+	if !reading {
+		l = &packLoad{done: make(chan struct{})}
+		c.packs[k] = l
+	}
+	c.mu.Unlock()
+	if !reading {
+		l.pk, l.err = resource.ReadPath(p)
+		if l.err != nil {
 			if st, serr := os.Stat(p); serr == nil && st.IsDir() {
-				pk, err = readPackLenient(p)
+				l.pk, l.err = readPackLenient(p)
 			}
 		}
-		if err == nil {
-			c.packs[k] = pk
-			return pk, nil
-		}
-		if cfg.Log != nil {
-			cfg.Log.Warn("server resource pack unreadable; downloading it", "path", p, "err", err)
-		}
+		close(l.done)
+	}
+	select {
+	case <-l.done:
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	}
+	if l.err == nil {
+		return l.pk, nil
+	}
+	if !reading && cfg.Log != nil {
+		cfg.Log.Warn("server resource pack unreadable; downloading it", "path", p, "err", l.err)
 	}
 	return c.dir.Load(ctx, key)
 }

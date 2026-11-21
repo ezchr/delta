@@ -1,6 +1,8 @@
 package bridge
 
 import (
+	v777 "github.com/ezchr/go-mcjava/v777"
+
 	"fmt"
 	"strings"
 	"time"
@@ -13,6 +15,9 @@ import (
 
 // selfState is the player's own state on the server.
 type selfState struct {
+	// selfTeam: the own no-collision team is on the Java client (sendSelfTeam).
+	selfTeam bool
+
 	pos        mgl64.Vec3 // feet
 	yaw, pitch float32
 	baseMode   int32 // Bedrock game type
@@ -138,6 +143,7 @@ func (p *Player) showSelf(teleport bool) {
 		p.teleportTo(s.pos, s.yaw, s.pitch)
 	}
 	p.sendWaitForChunks()
+	p.sendSelfTeam()
 	p.sendAbilities(s.mode, s.mayFly, s.flying, s.flySpeed)
 	p.sendOpLevel()
 	p.sendMovementAttributes()
@@ -544,4 +550,33 @@ func dayClock(names map[uint64]string, id uint64) bool {
 		return true
 	}
 	return strings.HasSuffix(strings.ToLower(names[id]), "overworld")
+}
+
+// selfTeamName is the team the Java player is put in on their own client.
+const selfTeamName = "delta_self"
+
+// sendSelfTeam puts the Java player in a team of their own with collision "never" on their client.
+// The Java client pushes itself away from mobs and players it touches (entity pushing is client
+// side on Java); BDS does not push the player for it, so every push was corrected straight back:
+// a zombie touching the player shoved the view and snapped it back. With the rule the client
+// leaves pushing to the server, as BDS expects.
+func (p *Player) sendSelfTeam() {
+	s := &p.self
+	if s.selfTeam || p.name == "" {
+		return
+	}
+	s.selfTeam = true
+	w := p.pk()
+	w.String(selfTeamName)
+	w.Byte(teamCreate)
+	writeText(w, "")
+	writeText(w, "")
+	writeText(w, "")
+	w.VarInt(0) // name tags: always
+	w.VarInt(1) // collision: never
+	w.Bool(false)
+	w.Byte(0)
+	w.VarInt(1)
+	w.String(p.name)
+	p.send(v777.ClientboundPlaySetPlayerTeam, w)
 }

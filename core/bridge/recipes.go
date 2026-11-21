@@ -411,7 +411,9 @@ func (w *Windows) clickResult(mode, button int) {
 			switch {
 			case st.Count == 0:
 				space[k] = maxStack
-			case p.javaID(st) == outID:
+			case stackable(st, res.out):
+				// The server's own test: a custom item is paper on Java whatever it is, and the
+				// same item with other data (an add-on's tag) is not the same stack.
 				space[k] = maxStack - int(st.Count)
 			}
 		}

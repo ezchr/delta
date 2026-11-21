@@ -1,0 +1,28 @@
+{
+  "layouts": [
+    {
+      "name": "abyss",
+      "title": "^dynamic:(?P<width>\\d+):(?P<height>\\d+):[\\d:]*\\|[\\d:]*:(?P<title>[^:]+):textures/",
+      "units": {
+        "x": {"offset": -5000, "scale": 0.1},
+        "y": {"offset": -5000, "scale": 0.1}
+      },
+      "max_width": 400,
+      "unmatched": "drop",
+      "elements": [
+        {
+          "kind": "decoration",
+          "match": "^\\w{10}:(?P<x>\\d+):(?P<y>\\d+):(?P<w>\\d+):(?P<h>\\d+):(?P<texture>textures/[^:]+)$"
+        },
+        {
+          "kind": "text",
+          "match": "(?s)^\\w{10}(?P<x>\\d{4}):(?P<y>\\d+):(?P<w>\\d+)\\|[\\d:]*:(?P<label>.*):default$"
+        },
+        {
+          "kind": "button",
+          "match": "(?s)^\\w{10}:(?P<x>\\d+):(?P<y>\\d+):(?P<w>\\d+):default::(?P<texture>[^:]*):(?P<hover>[^:]*):(?P<label>.*)$"
+        }
+      ]
+    }
+  ]
+}

@@ -106,6 +106,8 @@ func init() {
 		}
 		if e.t.kind&entPlayer != 0 {
 			p.updateNameTag(e)
+		} else {
+			p.updateMobTag(e)
 		}
 		if _, ok := pk.EntityMetadata[protocol.EntityDataKeyFlags]; ok && e.t.kind&entMob != 0 {
 			p.sendSaddle(e) // saddled is a flag on Bedrock, equipment on Java
@@ -282,7 +284,8 @@ func (p *Player) writeEntityData(d dataWriter, e *entity) {
 			c.Write(d.w)
 		}
 		always := e.flag(protocol.EntityDataFlagAlwaysShowName) || metaInt(m, protocol.EntityDataKeyAlwaysShowNameTag) != 0
-		d.boolVal(3, name != "" && always)
+		// A tag of several lines is a text display instead (mobTag): Java's is one line.
+		d.boolVal(3, name != "" && always && !multiLineTag(name))
 	}
 	d.boolVal(4, e.flag(protocol.EntityDataFlagSilent))
 	if kind&(entProjectile) != 0 && e.flags != 0 {

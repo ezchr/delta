@@ -127,6 +127,35 @@ func (p *Player) updateNameTag(e *entity) {
 	p.showTagDisplay(e, tag, sneak)
 }
 
+// modelEntity reports whether e is drawn as a custom model: its tag display is its hitbox.
+func (p *Player) modelEntity(e *entity) bool {
+	_, ok := p.packs.ents[e.rid]
+	return ok
+}
+
+// multiLineTag reports whether a name tag has several lines (a Java custom name is one: it
+// would show the line breaks as boxes).
+func multiLineTag(name string) bool {
+	return strings.Contains(strings.TrimRight(name, "\n"), "\n")
+}
+
+// updateMobTag shows the name tag of an entity that is not a player as the server has it now:
+// a tag of several lines is a text display riding it, at a name tag's height, as players' are
+// (a one-line tag is the Java custom name, entities_meta.go). It shows when the custom name
+// would: always-show on and the entity visible.
+func (p *Player) updateMobTag(e *entity) {
+	if !e.spawned || e.t.kind&entText != 0 || p.modelEntity(e) {
+		return // a custom model's rider slot is its hitbox (entities_custom.go)
+	}
+	name := strings.TrimRight(shownName(e, e.meta), "\n")
+	always := e.flag(protocol.EntityDataFlagAlwaysShowName) || metaInt(e.meta, protocol.EntityDataKeyAlwaysShowNameTag) != 0
+	if !multiLineTag(name) || !always || e.flag(protocol.EntityDataFlagInvisible) {
+		p.removeTagDisplay(e, true)
+		return
+	}
+	p.showTagDisplay(e, name, false)
+}
+
 // keepTabName gives a tab entry its name as a display name, so the team's prefix does not show
 // in the tab list (a Bedrock player list shows user names).
 func (p *Player) keepTabName(te *tabEntry) {

@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"math"
 	"os"
 	"path/filepath"
 	"strings"
@@ -303,7 +304,15 @@ func init() {
 	})
 	OnBedrock(packet.IDNetworkStackLatency, func(p *Player, pk *packet.NetworkStackLatency) {
 		if pk.NeedsResponse {
-			p.Write(&packet.NetworkStackLatency{Timestamp: pk.Timestamp})
+			// The vanilla client answers with the timestamp times 1,000,000 (a unit mix-up in the
+			// game), and plugins that wait for the client to have processed something check for
+			// exactly that: endstone-inventoryui sends one after its fake chest and only opens the
+			// menu on that answer, so with the plain echo its menus never opened for Java players.
+			t := pk.Timestamp
+			if t > -nslScaleLimit && t < nslScaleLimit {
+				t *= 1_000_000
+			}
+			p.Write(&packet.NetworkStackLatency{Timestamp: t})
 		}
 	})
 	OnBedrock(packet.IDPacketViolationWarning, func(p *Player, pk *packet.PacketViolationWarning) {
@@ -315,6 +324,9 @@ func init() {
 		OnBedrock(id, func(*Player, packet.Packet) {})
 	}
 }
+
+// nslScaleLimit keeps the client's x1,000,000 answer to a NetworkStackLatency within int64.
+const nslScaleLimit = math.MaxInt64 / 1_000_000
 
 // eyeHeight is how far above the feet Bedrock puts a player's position.
 const eyeHeight = 1.62

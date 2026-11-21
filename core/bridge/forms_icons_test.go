@@ -25,7 +25,8 @@ func TestMenuColumns(t *testing.T) {
 		{"many short ones", menu(8, "Sell", 0), 2},
 		{"colour codes do not count", menu(8, "§l§a1234567890123456789012", 0), 2},
 		{"a long label", append(menu(8, "Sell", 0), formButton{label: "A label of more than 22 letters"}), 1},
-		{"two lines", append(menu(8, "Sell", 0), formButton{label: "Sword\n§7120 coins"}), 1},
+		{"a second line is a tooltip", append(menu(8, "Sell", 0), formButton{label: "Sword\n§7120 coins, more than 22 letters"}), 2},
+		{"a long first line", append(menu(8, "Sell", 0), formButton{label: "A label of more than 22 letters\nx"}), 1},
 		{"fits without a picture only", menu(8, "12345678901234567890", 0xE000), 1},
 		{"short beside a picture", menu(8, "1234567890123456789", 0xE000), 2},
 	} {

@@ -372,6 +372,15 @@ func init() {
 		if pk.ContainerType == protocol.ContainerTypeTrade {
 			return // the trade window opens with UpdateTrade (trade.go)
 		}
+		if c := w.cur; c != nil && c.bid == pk.WindowID {
+			// Already open: a Bedrock client refuses a ContainerOpen for the window it has open
+			// with a PacketViolationWarning and keeps the window. Virtual-menu plugins rely on it
+			// (endstone-inventoryui resends ContainerOpen until it gets that warning, as its sign
+			// that the menu is open, and only then sends the items), so answer the same way.
+			p.Write(&packet.PacketViolationWarning{Type: packet.ViolationTypeMalformed,
+				Severity: packet.ViolationSeverityWarning, PacketID: int32(packet.IDContainerOpen)})
+			return
+		}
 		if w.cur != nil && w.cur.shown {
 			w.closeJava()
 		}
@@ -431,6 +440,28 @@ func init() {
 		}
 	})
 	OnBedrock(packet.IDContainerSetData, (*Player).containerData)
+	// A Bedrock client closes a block's window when the block stops being that block, and tells
+	// the server. Virtual-menu plugins close their menus that way: endstone-inventoryui turns its
+	// fake chest back into the real block and waits for that ContainerClose before it opens the
+	// next menu, so with the Java window left open a "go to another menu" button did nothing
+	// until the player closed the window by hand.
+	OnBedrock(packet.IDUpdateBlock, func(p *Player, pk *packet.UpdateBlock) {
+		w := p.win
+		c := w.cur
+		if c == nil || pk.Layer != 0 || (c.entity != -1 && c.entity != 0) || c.title == "" {
+			return
+		}
+		if int32(pk.Position[0]) != c.pos[0] || int32(pk.Position[1]) != c.pos[1] || int32(pk.Position[2]) != c.pos[2] {
+			return
+		}
+		if p.blockNameOf(int32(pk.NewBlockRuntimeID)) == c.title {
+			return // the same block (a state change), the window stays
+		}
+		w.returnItems()
+		w.closeJava()
+		p.Write(&packet.ContainerClose{WindowID: c.bid, ContainerType: c.typ})
+		w.updateResult()
+	})
 	OnJava(v777.ServerboundPlayContainerClose, func(p *Player, r *wireReader) error {
 		id := r.VarInt()
 		if r.Err != nil || p.rem == nil || p.inWaiting {

@@ -98,6 +98,13 @@ type formButton struct {
 	icon  rune
 }
 
+// buttonLines is a button label as a dialog button shows it: a button is one line, so the
+// first line is its label and the others its tooltip ("" if none).
+func buttonLines(label string) (first, rest string) {
+	first, rest, _ = strings.Cut(strings.ReplaceAll(label, "\r", ""), "\n")
+	return strings.TrimSpace(first), strings.TrimSpace(rest)
+}
+
 // formIcon is the glyph of a button's picture, 0 when it cannot be shown: no picture or one from
 // a URL, a texture the pack's font has not, or a client that did not load the pack. p.mu is held.
 func (p *Player) formIcon(img formImage) (font string, icon rune) {
@@ -138,7 +145,9 @@ func menuColumns(buttons []formButton) int32 {
 		if b.icon != 0 {
 			room = 19
 		}
-		if strings.ContainsAny(b.label, "\n\r") || utf8.RuneCountInString(b.label)-2*strings.Count(b.label, "§") > room {
+		// A label's second line is its tooltip (buttonLines): the first must fit.
+		first, _ := buttonLines(b.label)
+		if utf8.RuneCountInString(first)-2*strings.Count(first, "§") > room {
 			return 1
 		}
 	}
@@ -194,6 +203,9 @@ func (p *Player) showForm(pk *packet.ModalFormRequest) {
 	}
 	fs.open[pk.FormID] = &bf
 	id := int32(pk.FormID)
+	if p.showLayoutForm(pk.FormID, &bf) {
+		return // a server's own layout encoding, read by its adapter (forms_layout.go)
+	}
 
 	w := p.pk()
 	w.VarInt(0) // a dialog given inline
@@ -205,7 +217,8 @@ func (p *Player) showForm(pk *packet.ModalFormRequest) {
 	if screen != nil && bf.Type != "form" {
 		screen = nil
 	}
-	title := bedrockText(string(bf.Title))
+	// Packed layout data (readable.go) is shown as its readable fields.
+	title := bedrockText(readableText(string(bf.Title)))
 	if screen != nil {
 		title = bedrockText(screen.PlainTitle())
 	}
@@ -246,21 +259,43 @@ func (p *Player) showForm(pk *packet.ModalFormRequest) {
 			columns, width = int32(view.Columns), int32(view.Width)
 			break
 		}
-		body = appendBody(body, content)
+		body = appendBody(body, readableText(content))
+		// A pack that draws the form itself may send its frames and backgrounds as buttons of
+		// packed data with nothing to read: they are left out, the others keep the form's number.
+		packed := false
+		n := int32(0)
 		for _, e := range elems {
 			switch e.Type {
 			case "", "button":
-				font, icon := p.formIcon(e.Image)
-				buttons = append(buttons, formButton{string(e.Text), font, icon})
+				label, img := string(e.Text), e.Image
+				if looksPacked(label) {
+					runs, tex := packedText(label)
+					if len(runs) == 0 {
+						packed = true
+						n++
+						continue
+					}
+					label = strings.Join(runs, " ")
+					if img.Data == "" && tex != "" {
+						img = formImage{Type: "path", Data: tex}
+					}
+				}
+				font, icon := p.formIcon(img)
+				buttons = append(buttons, formButton{label, font, icon})
+				buttonIndex = append(buttonIndex, n)
+				n++
 			case "label", "header":
-				body = appendBody(body, string(e.Text))
+				body = appendBody(body, readableText(string(e.Text)))
 			}
+		}
+		if !packed {
+			buttonIndex = nil
 		}
 		columns = menuColumns(buttons)
 	case "modal":
 		var content string
 		_ = json.Unmarshal(bf.Content, &content)
-		body = appendBody(body, content)
+		body = appendBody(body, readableText(content))
 		buttons = []formButton{{label: string(bf.Button1)}, {label: string(bf.Button2)}}
 	case "custom_form":
 		_ = json.Unmarshal(bf.Content, &inputs)
@@ -285,7 +320,8 @@ func (p *Player) showForm(pk *packet.ModalFormRequest) {
 			if buttonIndex != nil {
 				n = buttonIndex[i]
 			}
-			writeButtonWidth(w, iconLabel(labelText(b.label), b.font, b.icon), id, n, width)
+			first, rest := buttonLines(b.label)
+			writeButtonFull(w, iconLabel(labelText(first), b.font, b.icon), rest, id, n, width)
 		}
 	}
 	if bf.Type == "modal" {
@@ -423,7 +459,16 @@ func writeButton(w *wire.Writer, label text.Component, id, button int32) {
 
 // writeButtonWidth is writeButton for a button width pixels wide (0: the client's 150).
 func writeButtonWidth(w *wire.Writer, label text.Component, id, button, width int32) {
+	writeButtonFull(w, label, "", id, button, width)
+}
+
+// writeButtonFull is writeButtonWidth with a tooltip (Bedrock text, "" for none).
+func writeButtonFull(w *wire.Writer, label text.Component, tooltip string, id, button, width int32) {
 	text.ComponentTag(w, "label", &label)
+	if tooltip != "" {
+		tip := bedrockText(tooltip)
+		text.ComponentTag(w, "tooltip", &tip)
+	}
 	if width > 0 {
 		text.IntTag(w, "width", width)
 	}

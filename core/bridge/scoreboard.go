@@ -33,6 +33,7 @@ type scoreboard struct {
 }
 
 type objective struct {
+	title     string         // its display name
 	ascending bool           // sorted ascending in the sidebar
 	slots     map[int32]bool // Java display slots it is shown in
 }
@@ -88,6 +89,9 @@ func (p *Player) setDisplayObjective(pk *packet.SetDisplayObjective) {
 	}
 	if pk.ObjectiveName == "" {
 		p.sendDisplayObjective(slot, "") // the slot is cleared
+		if slot == 1 {
+			p.sidebarChanged(true) // a panel made of titles has the sidebar to itself
+		}
 		return
 	}
 	o := sb.objectives[pk.ObjectiveName]
@@ -101,6 +105,7 @@ func (p *Player) setDisplayObjective(pk *packet.SetDisplayObjective) {
 	if slot == 1 {
 		o.ascending = pk.SortOrder == packet.ScoreboardSortOrderAscending
 	}
+	o.title = pk.DisplayName
 	w := p.pk()
 	w.String(pk.ObjectiveName)
 	w.Byte(mode)
@@ -112,6 +117,9 @@ func (p *Player) setDisplayObjective(pk *packet.SetDisplayObjective) {
 	p.sendDisplayObjective(slot, pk.ObjectiveName)
 	if mode == 2 && o.negated() != was {
 		p.resendScores(pk.ObjectiveName)
+	}
+	if slot == 1 {
+		p.sidebarChanged(true) // a panel made of titles shares the sidebar (hudpanel.go)
 	}
 }
 
@@ -137,10 +145,12 @@ func (p *Player) removeObjective(name string) {
 	w.String(name)
 	w.Byte(1)
 	p.send(v777.ClientboundPlaySetObjective, w)
+	p.sidebarChanged(false)
 }
 
 func (p *Player) setScore(pk *packet.SetScore) {
 	sb := p.board()
+	defer p.sidebarChanged(false)
 	for _, e := range pk.Entries {
 		if e.IdentityType == protocol.ScoreboardIdentityRemove {
 			if old, ok := sb.entries[e.EntryID]; ok && (e.ObjectiveName == "" || e.ObjectiveName == old.e.ObjectiveName) {
@@ -309,6 +319,7 @@ func (p *Player) scoreNamesChanged(uniq int64) {
 			p.sendScore(se)
 		}
 	}
+	p.sidebarChanged(false)
 }
 
 // hasEntityLines reports whether any line is a player's or entity's.

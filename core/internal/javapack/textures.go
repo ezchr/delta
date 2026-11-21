@@ -21,6 +21,18 @@ var javaTextureSet = sync.OnceValue(func() map[string]bool {
 })
 
 // renames are Bedrock texture names whose Java name follows no pattern.
+// shortItemNames are Bedrock item_texture.json keys of vanilla items whose Java texture has
+// another name.
+var shortItemNames = map[string]string{
+	"fish": "cod", "cooked_fish": "cooked_cod", "clownfish": "tropical_fish", "salmon": "salmon",
+	"cooked_salmon": "cooked_salmon", "mutton_raw": "mutton", "mutton_cooked": "cooked_mutton",
+	"beef_raw": "beef", "beef_cooked": "cooked_beef", "chicken_raw": "chicken", "chicken_cooked": "cooked_chicken",
+	"porkchop_raw": "porkchop", "porkchop_cooked": "cooked_porkchop", "rabbit_raw": "rabbit",
+	"rabbit_cooked": "cooked_rabbit", "potato_baked": "baked_potato", "potato_poisonous": "poisonous_potato",
+	"apple_golden": "golden_apple", "carrot_golden": "golden_carrot", "melon": "melon_slice",
+	"fish_pufferfish_raw": "pufferfish", "fish_salmon_raw": "salmon", "fish_clownfish_raw": "tropical_fish",
+}
+
 var renames = map[string]string{
 	"block/grass_side_carried": "grass_block_side", "block/grass_top": "grass_block_top",
 	"block/grass_side": "grass_block_side_overlay", "block/stonebrick": "stone_bricks",
@@ -82,6 +94,20 @@ func javaTextureFor(kind, rel string) (string, bool) {
 	}
 	if r, ok := try(name); ok {
 		return r, true
+	}
+	// Bedrock's short names for vanilla items, as add-ons reuse them by item_texture.json key.
+	if short := shortItemNames[name]; short != "" {
+		if r, ok := try(short); ok {
+			return r, true
+		}
+	}
+	// Bedrock's gold_/wood_ tool and weapon names (gold_sword, wood_spear): Java's golden_/wooden_.
+	for _, f := range [][2]string{{"gold_", "golden_"}, {"wood_", "wooden_"}} {
+		if rest, ok := strings.CutPrefix(name, f[0]); ok {
+			if r, ok := try(f[1] + rest); ok {
+				return r, true
+			}
+		}
 	}
 	parts := strings.Split(name, "_")
 	for i, p := range parts {

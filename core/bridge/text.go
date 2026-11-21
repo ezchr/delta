@@ -1,6 +1,7 @@
 package bridge
 
 import (
+	"slices"
 	"strings"
 
 	"github.com/ezchr/go-mcjava/text"
@@ -71,7 +72,7 @@ func (p *Player) bedrockText(pk *packet.Text) {
 	}
 	switch pk.TextType {
 	case packet.TextTypePopup, packet.TextTypeJukeboxPopup, packet.TextTypeTip:
-		p.sendActionBar(msg)
+		p.serverActionBar(msg)
 	default:
 		p.Message(msg)
 	}
@@ -114,6 +115,9 @@ func (p *Player) bedrockTitle(pk *packet.SetTitle) {
 	// shows them: on Java they would flash on screen as text.
 	for _, m := range p.hudMarkers {
 		if t != "" && strings.Contains(t, m) {
+			if slices.Contains(p.hudPanels, m) {
+				p.setHudPanel(m, strings.ReplaceAll(t, m, ""))
+			}
 			return
 		}
 	}
@@ -127,7 +131,7 @@ func (p *Player) bedrockTitle(pk *packet.SetTitle) {
 	case packet.TitleActionSetSubtitle, packet.TitleActionSubtitleTextObject:
 		p.sendSubtitle(t)
 	case packet.TitleActionSetActionBar, packet.TitleActionActionbarTextObject:
-		p.sendActionBar(t)
+		p.serverActionBar(t)
 	case packet.TitleActionSetDurations:
 		p.sendTitleTimes(pk.FadeInDuration, pk.RemainDuration, pk.FadeOutDuration)
 	}

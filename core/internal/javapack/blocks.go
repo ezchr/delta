@@ -290,7 +290,11 @@ func (b *builder) blockModel(name string, comps map[string]any) (string, bool) {
 	if tw <= 0 || th <= 0 {
 		tw, th = float64(tex.size.X), float64(tex.size.Y)
 	}
-	b.json(file, modelJSON(els, tex.id, tw, th))
+	m := modelJSON(els, tex.id, tw, th)
+	// The held and inventory views of a block: vanilla's block/block has them (the inventory's
+	// 30/225 tilt). Without, a slot shows the model face on, and a thin one (a carpet) is a line.
+	m["parent"] = "minecraft:block/block"
+	b.json(file, m)
 	return id, true
 }
 

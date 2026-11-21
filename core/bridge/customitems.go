@@ -153,7 +153,13 @@ func (c *customItem) apply(js *jitem.Stack) {
 		js.Raw = append(js.Raw, jitem.RawComponent{Type: jitem.CompConsumable, Data: w.B})
 	}
 	if c.equipSlot >= 0 {
-		js.Equippable = &jitem.Equippable{Slot: c.equipSlot, Swappable: true, DamageOnHurt: c.maxDamage > 0}
+		// The pack's equipment asset (packItem, before this) stays: without it the client has
+		// nothing to draw the armour with on the body.
+		var model string
+		if js.Equippable != nil {
+			model = js.Equippable.Model
+		}
+		js.Equippable = &jitem.Equippable{Slot: c.equipSlot, Model: model, Swappable: true, DamageOnHurt: c.maxDamage > 0}
 		js.Add(jitem.CompEquippable)
 	}
 }
